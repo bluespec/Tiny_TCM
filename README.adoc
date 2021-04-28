@@ -1,0 +1,13 @@
+A _tiny_ TCM for non-pipelined use. This near-mem implements a
+resource-constrained TCM implementation minimizing gate/LUT count with little
+concession for performance.
+
+This near-mem is intended for use in small cores where low resource
+utilization trumps performance.
+
+The starter code for this version is from the following commit of the magritte
+repository:
+
+```
+commit 69e1e24074bd0467ef54f97d2ee2c7d15c7455bb (HEAD -> VHF-LI-NM)
+```
