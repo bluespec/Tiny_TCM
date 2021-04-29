@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.
+// Copyright (c) 2016-2021 Bluespec, Inc. All Rights Reserved.
 
 // Near_Mem_IFC is an abstraction of two alternatives: caches or TCM
 // (TCM = Tightly Coupled Memory).  Both are memories that are
@@ -116,24 +116,6 @@ endfunction
 
 // ================================================================
 // TCM interfaces
-
-interface ITCM_IFC;
-   method Action  reset;
-
-   // CPU side
-   interface Server #(Near_Mem_IReq, Near_Mem_IRsp)  imem;
-
-   // Fabric side -- unused for TCMs
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) mem_master;
-
-   // Inform core that DDR4 has been initialized and is ready to accept requests
-   method Action ma_ddr4_ready;
-
-   // Misc. status; 0 = running, no error
-   (* always_ready *)
-   method Bit #(8) mv_status;
-endinterface
-
 interface DTCM_IFC;
    method Action  reset;
 
@@ -254,8 +236,8 @@ module mkNear_Mem (Near_Mem_IFC);
       interface Get exc = dmem_port.dmem.exc;
       interface Get instr;
          method ActionValue#(Instr) get;
-            let dmem_rsp_word64 <- dmem_port.dmem.word64.get();
-            return (truncate (dmem_rsp_word64));
+            let dmem_rsp_word32 <- dmem_port.dmem.word32.get();
+            return (dmem_rsp_word32);
          endmethod
       endinterface
       interface Get exc_code;
@@ -310,14 +292,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
 
    // ----------------
-   // Indication that the DDR4 is ready to both AXI4 adapters
-   method Action ma_ddr4_ready;
-      dmem_port.ma_ddr4_ready;
-   endmethod
-
-   // ----------------
    // For ISA tests: watch memory writes to <tohost> addr
-`ifndef SYNTHESIS
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Bit #(64) tohost_addr);
       dmem_port.set_watch_tohost (watch_tohost, tohost_addr);
@@ -325,7 +300,10 @@ module mkNear_Mem (Near_Mem_IFC);
 
    method Bit #(64) mv_tohost_value = dmem_port.mv_tohost_value;
 `endif
-`endif
+
+   // ----------------
+   // Indication that the DDR4 is ready to both AXI4 adapters
+   method Action ma_ddr4_ready = dmem_port.ma_ddr4_ready;
 
    // Misc. status; 0 = running, no error. Since it reports only write errors,
    // the imem_port will never report a non-zero status
@@ -368,8 +346,8 @@ module mkDTCM #(
    // FIFOF #(MMU_Cache_Req) f_req    <- mkFIFOF1;
 
    // Response to the CPU
-   FIFOF #(Bit #(64)) f_rsp_word64        <- mkBypassFIFOF;
-   FIFOF #(Bit #(64)) f_rsp_final_st_val  <- mkBypassFIFOF;
+   FIFOF #(Bit #(32)) f_rsp_word32        <- mkBypassFIFOF;
+   FIFOF #(Bit #(32)) f_rsp_final_st_val  <- mkBypassFIFOF;
    FIFOF #(Exc_Code)  f_rsp_exc_code      <- mkBypassFIFOF;
    FIFOF #(Bool)      f_rsp_exc           <- mkBypassFIFOF;
 
@@ -385,7 +363,12 @@ module mkDTCM #(
 `endif
 
    // Access to fabric for non-TCM requests
-   DMMIO_IFC        mmio            <- mkDMMIO (f_req, f_rsp_word64, f_rsp_final_st_val, f_rsp_exc_code, f_rsp_exc, verbosity_mmio);
+   DMMIO_IFC        mmio            <- mkDMMIO (  f_req
+                                                , f_rsp_word32
+                                                , f_rsp_final_st_val
+                                                , f_rsp_exc_code
+                                                , f_rsp_exc
+                                                , verbosity_mmio);
 
    TCM_AXI4_Adapter_IFC axi4_adapter<- mkTCM_AXI4_Adapter (verbosity_axi4);
 
@@ -399,37 +382,45 @@ module mkDTCM #(
    // This function generates the store word for the TCM depending
    // on the opcode. For AMO ops might involve some computation
    // with read data from the RAM. In case of SC fail, it returns
-   // a valid value for the word64 method
-   function ActionValue #(Tuple2 #(Maybe #(Bit #(64)), Bit #(64))) fav_write_to_ram (
-      MMU_Cache_Req req, Bit #(64) ram_data
-   );
+   // a valid value for the Bool maybe type
+   function ActionValue #(
+`ifdef ISA_A
+      Tuple2 #(
+`endif
+           Bit #(32)
+`ifdef ISA_A
+         , Maybe #(Bool))
+`endif
+   ) fav_write_to_ram (MMU_Cache_Req req, Bit #(32) ram_data);
+
       actionvalue
          Fabric_Addr fabric_va = fv_Addr_to_Fabric_Addr (req.va);
          Addr tcm_byte_addr = fv_Fabric_Addr_to_Addr (
             fabric_va - soc_map.m_tcm_addr_base);
          let st_value  = req.st_value;
          let f3        = req.f3;
-         Maybe #(Bit #(64)) lrsc_word64 = tagged Invalid;
-         Bool sc_fail = False;
 
 `ifdef ISA_A
+         Maybe #(Bool) lrsc_fail = tagged Invalid;
+         Bool sc_fail = False;
+
          // AMO SC request
          if (fv_is_AMO_SC (req)) begin
             if (rg_lrsc_valid && (rg_lrsc_pa == req.va)) begin
                if (verbosity >= 1) begin
                   $display ("%0d: %m.fav_write_to_ram: SC success", cur_cycle);
-                  $display ("      (va %08h) (data %016h)", req.va, st_value);
+                  $display ("      (va %08h) (data %08h)", req.va, st_value);
                end
                // SC success: cancel LR/SC reservation
                rg_lrsc_valid <= False;
-               lrsc_word64 = tagged Valid 64'h0;
+               lrsc_fail = tagged Valid False;// the response word should be 0
             end
             else begin 
                if (verbosity >= 1) begin
                   $display ("%0d: %m.fav_write_to_ram: SC fail", cur_cycle);
-                  $display ("      (va %08h) (data %016h)", req.va, st_value);
+                  $display ("      (va %08h) (data %08h)", req.va, st_value);
                end
-               lrsc_word64 = tagged Valid 64'h1;
+               lrsc_fail = tagged Valid True; // the response word should be 1
                sc_fail = True;
             end
          end
@@ -439,8 +430,8 @@ module mkDTCM #(
             Fmt fmt_op = fshow_f5_AMO_op (req.amo_funct7 [6:2]);
             if (verbosity >= 1) begin
                $display ("%0d: %m.fav_write_to_ram: AMO ", cur_cycle, fmt_op);
-               $display ("      (va %08h) (rs2_val %016h) (f3 %03b)", req.va, st_value, f3);
-               $display ("      (load-result %016h)", ram_data);
+               $display ("      (va %08h) (rs2_val %08h) (f3 %03b)", req.va, st_value, f3);
+               $display ("      (load-result %08h)", ram_data);
             end
 
             let size_code  = f3 [1:0];
@@ -449,7 +440,8 @@ module mkDTCM #(
                size_code, req.amo_funct7 [6:2], ram_data, st_value);
 
             if (verbosity >= 1)
-               $display ("      ", fmt_op, " (%016h, %016h) -> %016h", ram_data, st_value, value_after_op);
+               $display ("      ", fmt_op, " (%016h, %08h) -> %08h"
+                  , ram_data, st_value, value_after_op);
 
             st_value = pack (value_after_op);
 
@@ -462,7 +454,7 @@ module mkDTCM #(
 `endif
             if (verbosity >= 1) begin
                $display ("%0d: %m.fav_write_to_ram: ST", cur_cycle);
-               $display ("      (va %08h) (data %016h)", req.va, st_value);
+               $display ("      (va %08h) (data %08h)", req.va, st_value);
             end
 
 `ifdef ISA_A
@@ -478,12 +470,20 @@ module mkDTCM #(
          Addr tcm_word_addr = (tcm_byte_addr >> bits_per_byte_in_tcm_word);
 
          if (verbosity >= 1)
-            $display ("      (RAM byte_en %08b) (RAM data %016h)", byte_en, ram_st_value);
+            $display ("      (RAM byte_en %08b) (RAM data %08h)"
+               , byte_en, ram_st_value);
 
          // the actual write to the RAM - the only case when we
          // don't write is if there was a SC fail
-         if (! sc_fail) ram.put (byte_en, tcm_word_addr, ram_st_value);
-         Bit #(64) final_st_val = sc_fail ? 0 : extend (ram_st_value);
+`ifdef ISA_A
+         if (! sc_fail)
+`endif
+            ram.put (byte_en, tcm_word_addr, ram_st_value);
+`ifdef ISA_A
+         Bit #(32) final_st_val = sc_fail ? 0 : ram_st_value;
+`else
+         Bit #(32) final_st_val = ram_st_value;
+`endif
 
 `ifndef SYNTHESIS
 `ifdef WATCH_TOHOST
@@ -500,12 +500,21 @@ module mkDTCM #(
                $display ("%0d: %m.fa_watch_tohost", cur_cycle);
                if (test_num == 0) $write ("    PASS");
                else               $write ("    FAIL <test_%0d>", test_num);
-               $display ("  (<tohost>  addr %08h  data %08h)", req.va, ram_st_value);
+               $display ("  (<tohost>  addr %08h  data %08h)"
+                  , req.va, ram_st_value);
             end
          end
 `endif
 `endif
-         return (tuple2 (lrsc_word64, final_st_val));
+         return (
+`ifdef ISA_A
+            tuple2 (
+`endif
+                 final_st_val
+`ifdef ISA_A
+               , lrsc_fail)
+`endif
+               );
       endactionvalue
    endfunction 
    
@@ -524,16 +533,23 @@ module mkDTCM #(
          req.f3, req.va, pack (ram.read));
 
       // the outgoing response
-      let word64 = ram_out;
+      let word32 = ram_out;
 
       // If the request involves a store, initiate the write
       // In the case of RMWs, it will involve the current RAM output as well.
       if (  (req.op == CACHE_ST)
+`ifdef ISA_A
          || fv_is_AMO_SC (req)
-         || fv_is_AMO_RMW (req)) begin
-         match {.lrsc_word64, .final_st_val} <- fav_write_to_ram (req, ram_out);
+         || fv_is_AMO_RMW (req)
+`endif
+         ) begin
+`ifdef ISA_A
+         match {.final_st_val, .lrsc_fail} <- fav_write_to_ram (req, ram_out);
+         if (isValid (lrsc_fail)) word32 = extend (pack(lrsc_fail.Valid));
+`else
+         let final_st_val <- fav_write_to_ram (req, ram_out);
+`endif
          f_rsp_final_st_val.enq (final_st_val);
-         if (isValid (lrsc_word64)) word64 = lrsc_word64.Valid;
       end
 
 `ifdef ISA_A
@@ -546,12 +562,12 @@ module mkDTCM #(
       end
 `endif
 
-      f_rsp_word64.enq (word64);
+      f_rsp_word32.enq (word32);
       f_rsp_exc_code.enq (fv_exc_code_misaligned (req));
       f_rsp_exc.enq (rg_exc);
       if (verbosity >= 1)
-         $display ("%0d: %m.rl_tcm_rsp: (va %08h) (word64 %016h)"
-            , cur_cycle, req.va, word64);
+         $display ("%0d: %m.rl_tcm_rsp: (va %08h) (word32 %016h)"
+            , cur_cycle, req.va, word32);
    endrule
 
    // ----------------------------------------------------------------
@@ -573,10 +589,20 @@ module mkDTCM #(
            CacheOp op
          , Bit #(3) f3
          , WordXL addr
-         , Bit #(64) store_value
+         , Bit #(32) store_value
       );
          // Note: ignoring all VM args for this version of Near_Mem_TCM
          // if (verbosity > 1) $display ("%0d: %m.req: ", cur_cycle, fshow (req));
+
+         // This method is used by both ifetches and ld/st. In its present form it
+         // does not distinguish between the two and makes the entire TCM
+         // accessible to both which can be dangerous. If extra checks and
+         // safeguards are needed to protect ifetches then an extra flag needs to
+         // be added to the request which indicates that the request is an ifetch.
+
+         // Some possible extra checks for ifetches (will cost resources):
+         // 1. Only use a certain region in the TCM constituting the "itcm"
+         // 2. Do not allow use of the MMIO
 
          // register the request for the response stage
          let nm_req = MMU_Cache_Req {
@@ -623,7 +649,7 @@ module mkDTCM #(
       // endinterface
 
       // CPU interface: response
-      interface Get  word64 = toGet (f_rsp_word64);
+      interface Get  word32 = toGet (f_rsp_word32);
       interface Get  final_st_val = toGet (f_rsp_final_st_val);
       interface Get  exc_code = toGet (f_rsp_exc_code);
       interface Get  exc = toGet (f_rsp_exc);
@@ -636,7 +662,6 @@ module mkDTCM #(
    // ----------------------------------------------------------------
    // Misc. control and status
 
-`ifndef SYNTHESIS
    // ----------------
    // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
 
@@ -651,7 +676,6 @@ module mkDTCM #(
    method Bit #(64) mv_tohost_value;
       return rg_tohost_value;
    endmethod
-`endif
 `endif
 
    method Action ma_ddr4_ready = axi4_adapter.ma_ddr4_ready;

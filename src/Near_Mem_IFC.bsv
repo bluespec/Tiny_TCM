@@ -81,48 +81,7 @@ typedef AXI4_Master_IFC #(Wd_Id_Mem,
 			  Wd_User_Mem)  Near_Mem_Fabric_IFC;
 
 // ================================================================
-// IMem and DMem request and response packets
-typedef struct {
-   Bit #(3)    f3;
-   WordXL      addr;
-`ifdef ISA_PRIV_S // The following  args for VM
-   Priv_Mode   priv;
-   Bit #(1)    sstatus_SUM;
-   Bit #(1)    mstatus_MXR;
-   WordXL      satp;
-`endif
-} Near_Mem_IReq deriving (Bits, Eq, FShow);
-
-typedef struct {
-   Bool        exc;
-   Exc_Code    exc_code;
-   Instr       instr;
-   Bool        is_i32_not_i16;
-} Near_Mem_IRsp deriving (Bits, Eq, FShow);
-
-typedef struct {
-   CacheOp     op;
-   Bit #(3)    f3;
-`ifdef ISA_A
-   Bit #(7)    amo_funct7;
-`endif
-   WordXL      addr;
-   Bit #(64)   store_value;
-`ifdef ISA_PRIV_S // The following  args for VM
-   Priv_Mode   priv;
-   Bit #(1)    sstatus_SUM;
-   Bit #(1)    mstatus_MXR;
-   WordXL      satp;
-`endif
-} Near_Mem_DReq deriving (Bits, Eq, FShow);
-
-typedef struct {
-   Bool        exc;
-   Exc_Code    exc_code;
-   Bit #(64)   word64;
-   Bit #(64)   final_st_val;
-} Near_Mem_DRsp deriving (Bits, Eq, FShow);
-
+// IMem and DMem Interfaces
 interface IMem_IFC;
    method Action req (Bit#(3) f3, WordXL addr);
    interface Get #(Instr) instr;
@@ -133,12 +92,11 @@ interface IMem_IFC;
 endinterface
 
 interface DMem_IFC;
-   method Action req (CacheOp op, Bit#(3) f3, WordXL addr, Bit#(64) store_value);
-   interface Get #(Bit #(64)) word64;
-   interface Get #(Bit #(64)) final_st_val;
+   method Action req (CacheOp op, Bit#(3) f3, WordXL addr, Bit#(32) store_value);
+   interface Get #(Bit #(32)) word32;
+   interface Get #(Bit #(32)) final_st_val;
    interface Get #(Exc_Code)  exc_code;
    interface Get #(Bool)      exc;
-   // interface Get #(Near_Mem_DRsp) response;
 endinterface
 
 interface Near_Mem_IFC;
@@ -149,7 +107,6 @@ interface Near_Mem_IFC;
    // IMem
 
    // CPU side
-   // interface Server #(Near_Mem_IReq, Near_Mem_IRsp) imem;
    interface IMem_IFC  imem;
 
    // Fabric side -- unused for TCMs
@@ -159,7 +116,6 @@ interface Near_Mem_IFC;
    // DMem
 
    // CPU side
-   // interface Server #(Near_Mem_DReq, Near_Mem_DRsp) dmem;
    interface DMem_IFC  dmem;
 
    // Fabric side (MMIO initiator interface)
@@ -258,58 +214,43 @@ endinterface;
 //  - a load-word (loaded from cache/mem)
 // result:
 //  - word with correct byte(s) shifted into LSBs and properly extended
+// 
+// Tiny TCM: Changed to handle 32-bit raw words only to reduce mux sizes
 
-function Bit #(64) fn_extract_and_extend_bytes (Bit #(3) f3, WordXL byte_addr, Bit #(64) word64);
-   Bit #(64) result    = 0;
-   Bit #(3)  addr_lsbs = byte_addr [2:0];
+function Bit #(32) fn_extract_and_extend_bytes (Bit #(3) f3, WordXL byte_addr, Bit #(32) mem_word);
+   Bit #(32) result    = 0;
+   Bit #(2)  addr_lsbs = byte_addr [1:0];
 
    case (f3)
       f3_LB: case (addr_lsbs)
-                'h0: result = signExtend (word64 [ 7: 0]);
-                'h1: result = signExtend (word64 [15: 8]);
-                'h2: result = signExtend (word64 [23:16]);
-                'h3: result = signExtend (word64 [31:24]);
-                'h4: result = signExtend (word64 [39:32]);
-                'h5: result = signExtend (word64 [47:40]);
-                'h6: result = signExtend (word64 [55:48]);
-                'h7: result = signExtend (word64 [63:56]);
+                'h0: result = signExtend (mem_word [ 7: 0]);
+                'h1: result = signExtend (mem_word [15: 8]);
+                'h2: result = signExtend (mem_word [23:16]);
+                'h3: result = signExtend (mem_word [31:24]);
              endcase
       f3_LBU: case (addr_lsbs)
-                'h0: result = zeroExtend (word64 [ 7: 0]);
-                'h1: result = zeroExtend (word64 [15: 8]);
-                'h2: result = zeroExtend (word64 [23:16]);
-                'h3: result = zeroExtend (word64 [31:24]);
-                'h4: result = zeroExtend (word64 [39:32]);
-                'h5: result = zeroExtend (word64 [47:40]);
-                'h6: result = zeroExtend (word64 [55:48]);
-                'h7: result = zeroExtend (word64 [63:56]);
+                'h0: result = zeroExtend (mem_word [ 7: 0]);
+                'h1: result = zeroExtend (mem_word [15: 8]);
+                'h2: result = zeroExtend (mem_word [23:16]);
+                'h3: result = zeroExtend (mem_word [31:24]);
              endcase
 
       f3_LH: case (addr_lsbs)
-                'h0: result = signExtend (word64 [15: 0]);
-                'h2: result = signExtend (word64 [31:16]);
-                'h4: result = signExtend (word64 [47:32]);
-                'h6: result = signExtend (word64 [63:48]);
+                'h0: result = signExtend (mem_word [15: 0]);
+                'h2: result = signExtend (mem_word [31:16]);
              endcase
       f3_LHU: case (addr_lsbs)
-                'h0: result = zeroExtend (word64 [15: 0]);
-                'h2: result = zeroExtend (word64 [31:16]);
-                'h4: result = zeroExtend (word64 [47:32]);
-                'h6: result = zeroExtend (word64 [63:48]);
+                'h0: result = zeroExtend (mem_word [15: 0]);
+                'h2: result = zeroExtend (mem_word [31:16]);
              endcase
 
-      f3_LW: case (addr_lsbs)
-                'h0: result = signExtend (word64 [31: 0]);
-                'h4: result = signExtend (word64 [63:32]);
-             endcase
-      f3_LWU: case (addr_lsbs)
-                'h0: result = zeroExtend (word64 [31: 0]);
-                'h4: result = zeroExtend (word64 [63:32]);
-             endcase
+      f3_LW: result = mem_word;
 
-      f3_LD: case (addr_lsbs)
-                'h0: result = word64;
-             endcase
+      // the following cases are only possible in RV64 or with ISA-D. In either
+      // case the assumption is that packing to 64-bits is handled outside this
+      // near-mem.
+      f3_LWU: result = mem_word;
+      f3_LD: result = mem_word;
    endcase
    return result;
 endfunction
@@ -327,7 +268,7 @@ endfunction
 
 function Tuple2 #(Bit #(Bytes_per_TCM_Word), // byte-enable
                   TCM_Word)                  // adjusted word
-         fn_byte_adjust_write (Bit #(3) f3, Addr byte_addr, Bit#(64) word);
+         fn_byte_adjust_write (Bit #(3) f3, Addr byte_addr, Bit#(32) word);
 
    Bit #(Bytes_per_TCM_Word) byte_en  = 0;   // If misaligned or illegal
    TCM_Word out_word = ?;
@@ -337,34 +278,23 @@ function Tuple2 #(Bit #(Bytes_per_TCM_Word), // byte-enable
    case ({1'b0, f3 [1:0]})
       // Bytes
       f3_LB: case (addr_lsbs)
-         'h0: begin out_word [ 7: 0] = word [7:0]; byte_en = 'h01; end
-         'h1: begin out_word [15: 8] = word [7:0]; byte_en = 'h02; end
-         'h2: begin out_word [23:16] = word [7:0]; byte_en = 'h04; end
-         'h3: begin out_word [31:24] = word [7:0]; byte_en = 'h08; end
-         'h4: begin out_word [39:32] = word [7:0]; byte_en = 'h10; end
-         'h5: begin out_word [47:40] = word [7:0]; byte_en = 'h20; end
-         'h6: begin out_word [55:48] = word [7:0]; byte_en = 'h40; end
-         'h7: begin out_word [63:56] = word [7:0]; byte_en = 'h80; end
+         'h0: begin out_word [ 7: 0] = word [7:0]; byte_en = 'h1; end
+         'h1: begin out_word [15: 8] = word [7:0]; byte_en = 'h2; end
+         'h2: begin out_word [23:16] = word [7:0]; byte_en = 'h4; end
+         'h3: begin out_word [31:24] = word [7:0]; byte_en = 'h8; end
       endcase
 
       // Halfwords (16b)
       f3_LH: case (addr_lsbs)
-         'h0: begin out_word [15: 0] = word [15:0]; byte_en = 'h03; end
-         'h2: begin out_word [31:16] = word [15:0]; byte_en = 'h0C; end
-         'h4: begin out_word [47:32] = word [15:0]; byte_en = 'h30; end
-         'h6: begin out_word [63:48] = word [15:0]; byte_en = 'hC0; end
+         'h0: begin out_word [15: 0] = word [15:0]; byte_en = 'h3; end
+         'h2: begin out_word [31:16] = word [15:0]; byte_en = 'hC; end
       endcase
 
       // Words (32b)
-      f3_LW: case (addr_lsbs)
-         'h0: begin out_word [31: 0] = word [31:0]; byte_en = 'h0F; end
-         'h4: begin out_word [63:32] = word [31:0]; byte_en = 'hF0; end
-      endcase
+      f3_LW: begin out_word = word; byte_en = 'hf; end
 
-      // Doublewords (64b)
-      f3_LD: case (addr_lsbs)
-         'h0: begin out_word = word; byte_en = '1; end
-      endcase
+      // Doublewords (64b) -- XXX Unsupported
+      f3_LD: begin out_word = word; byte_en = 'hf; end
 
    endcase
    return tuple2 (byte_en, out_word);

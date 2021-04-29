@@ -28,7 +28,7 @@ deriving (Bits, Eq, FShow);
 typedef struct {CacheOp    op;
 		Bit #(3)   f3;
 		WordXL     va;
-		Bit #(64)  st_value;
+		Bit #(32)  st_value;
 
 `ifdef ISA_A
 		Bit #(7)   amo_funct7;
@@ -249,7 +249,7 @@ deriving (Bits, FShow);
 
 typedef struct {
    Bool       ok;
-   Bit #(64)  data;
+   Bit #(32)  data;
    } Read_Data
 deriving (Bits, FShow);
 
@@ -258,39 +258,39 @@ deriving (Bits, FShow);
 // ================================================================
 // Functions to/from lsb-justified data to fabric-lane-aligned data
 
-function Bit #(64) fv_size_code_to_mask (Bit #(2) size_code);
-   Bit #(64) mask = case (size_code)
-		       2'b00: 'h_0000_0000_0000_00FF;
-		       2'b01: 'h_0000_0000_0000_FFFF;
-		       2'b10: 'h_0000_0000_FFFF_FFFF;
-		       2'b11: 'h_FFFF_FFFF_FFFF_FFFF;
+function Bit #(32) fv_size_code_to_mask (Bit #(2) size_code);
+   Bit #(32) mask = case (size_code)
+		       2'b00: 'h_0000_00FF;
+		       2'b01: 'h_0000_FFFF;
+		       2'b10: 'h_FFFF_FFFF;
+		       2'b11: 'h_FFFF_FFFF;  // XXX : Does not work
 		    endcase;
    return mask;
 endfunction
 
-function Bit #(64) fv_to_byte_lanes (Bit #(64) addr, Bit #(2) size_code, Bit #(64) data);
-   Bit #(64) data1 = (data & fv_size_code_to_mask (size_code));
+function Bit #(32) fv_to_byte_lanes (Bit #(64) addr, Bit #(2) size_code, Bit #(32) data);
+   Bit #(32) data1 = (data & fv_size_code_to_mask (size_code));
    return data1;
 endfunction
 
-function Bit #(64) fv_from_byte_lanes (Bit #(64)  addr,
+function Bit #(32) fv_from_byte_lanes (Bit #(64)  addr,
 				       Bit #(2)   size_code,
-				       Bit #(64)  data);
-   Bit #(6)  shamt = { addr [2:0], 3'b0 };
-   Bit #(64) data1 = (data >> shamt);
+				       Bit #(32)  data);
+   Bit #(5)  shamt = { addr [1:0], 3'b0 };
+   Bit #(32) data1 = (data >> shamt);
 
    return (data1 & fv_size_code_to_mask (size_code));
 endfunction
 
-function Bit #(64) fv_extend (Bit #(3) f3, Bit #(64) data);
-   Bit #(64) mask     = fv_size_code_to_mask (f3 [1:0]);
+function Bit #(32) fv_extend (Bit #(3) f3, Bit #(32) data);
+   Bit #(32) mask     = fv_size_code_to_mask (f3 [1:0]);
    Bit #(1)  sign_bit = case (f3 [1:0])
 			   2'b00: data  [7];
 			   2'b01: data [15];
 			   2'b10: data [31];
-			   2'b11: data [63];
+			   2'b11: data [31]; // XXX : Does not work
 			endcase;
-   Bit #(64) result;
+   Bit #(32) result;
    if ((f3 [2] == 1'b0) && (sign_bit == 1'b1))
       result = data | (~ mask);    // sign extend
    else
@@ -301,29 +301,23 @@ endfunction
 
 // ================================================================
 // ALU for AMO ops.
-// Args: ld_val (64b from mem) and st_val (64b from CPU reg Rs2)
+// Args: ld_val (32b from mem) and st_val (32b from CPU reg Rs2)
 // Result: (final_ld_val, final_st_val)
 //
 // All args and results are in LSBs (i.e., not lane-aligned).
 // final_ld_val includes sign-extension (if necessary).
 // final_st_val is output of the binary AMO op
 
-function Tuple2 #(Bit #(64),
-		  Bit #(64)) fv_amo_op (Bit #(2)   size_code, // 2'b10=W, 11=D
+function Tuple2 #(Bit #(32),
+		  Bit #(32)) fv_amo_op (Bit #(2)   size_code, // 2'b10=W, 11=D
 					Bit #(5)   funct5,    // encodes the AMO op
-					Bit #(64)  ld_val,    // 64b value loaded from mem
-					Bit #(64)  st_val);   // 64b value from CPU reg Rs2
-   Bit #(64) w1     = ld_val;
-   Bit #(64) w2     = st_val;
-   Int #(64) i1     = unpack (w1);    // Signed, for signed ops
-   Int #(64) i2     = unpack (w2);    // Signed, for signed ops
-   if (size_code == 2'b10) begin
-      w1 = zeroExtend (w1 [31:0]);
-      w2 = zeroExtend (w2 [31:0]);
-      i1 = unpack (signExtend (w1 [31:0]));
-      i2 = unpack (signExtend (w2 [31:0]));
-   end
-   Bit #(64) final_st_val = ?;
+					Bit #(32)  ld_val,    // 32b value loaded from mem
+					Bit #(32)  st_val);   // 32b value from CPU reg Rs2
+   Bit #(32) w1     = ld_val;
+   Bit #(32) w2     = st_val;
+   Int #(32) i1     = unpack (w1);    // Signed, for signed ops
+   Int #(32) i2     = unpack (w2);    // Signed, for signed ops
+   Bit #(32) final_st_val = ?;
    case (funct5)
       f5_AMO_SWAP: final_st_val = w2;
       f5_AMO_ADD:  final_st_val = pack (i1 + i2);
@@ -336,10 +330,7 @@ function Tuple2 #(Bit #(64),
       f5_AMO_MAX:  final_st_val = ((i1 > i2) ? w1 : w2);
    endcase
 
-   if (size_code == 2'b10)
-      final_st_val = zeroExtend (final_st_val [31:0]);
-
-   return tuple2 (truncate (pack (i1)), final_st_val);
+   return tuple2 (pack (i1), final_st_val);
 endfunction: fv_amo_op
 
 // ================================================================

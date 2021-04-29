@@ -59,7 +59,7 @@ endfunction
 function Fabric_Addr fv_Addr_to_Fabric_Addr (Addr addr);
 `ifdef RV32
 `ifdef FABRIC32
-   return (addr);
+   return (pack (addr));
 `elsif FABRIC64
    return zeroExtend (addr);
 `endif
@@ -78,7 +78,7 @@ endfunction
 function Addr fv_Fabric_Addr_to_Addr (Fabric_Addr a);
 `ifdef RV32
 `ifdef FABRIC32
-   return (a);
+   return (pack (a));
 `elsif FABRIC64
    return truncate (a);
 `endif
@@ -113,7 +113,7 @@ interface TCM_AXI4_Adapter_IFC;
    // interface for word/sub-word read/write client
 
    interface Put #(Single_Req) p_mem_single_req;
-   interface Put #(Bit #(64))  p_mem_single_write_data;
+   interface Put #(Bit #(32))  p_mem_single_write_data;
    interface Get #(Read_Data)  g_mem_single_read_data;
 
    // ----------------
@@ -129,6 +129,7 @@ interface TCM_AXI4_Adapter_IFC;
    // Misc. status; 0 = running, no error
    (* always_ready *)
    method Bit #(8) mv_status;
+
 
 endinterface
 
@@ -163,12 +164,9 @@ module mkTCM_AXI4_Adapter #(
    Bit #(1) client_id_line   = 0;
    Bit #(1) client_id_single = 1;
 
-   // Limit the number of reads/writes outstanding to 15
-   // TODO: change these to concurrent up/down counters?
-   Reg #(Bit #(4)) rg_rd_rsps_pending <- mkReg (0);
-   Reg #(Bit #(4)) rg_wr_rsps_pending <- mkReg (0);
-
-   Reg #(Bool) rg_ddr4_ready <- mkReg (False);
+   // Limit the number of reads/writes outstanding to 1
+   Reg #(Bool) rg_rd_rsps_pending <- mkReg (False);
+   Reg #(Bool) rg_wr_rsps_pending <- mkReg (False);
 
    // Record errors on write-responses from mem
    Reg #(Bool) rg_write_error <- mkReg (False);
@@ -178,7 +176,7 @@ module mkTCM_AXI4_Adapter #(
 
    // Memory request from MMIO
    FIFOF #(Single_Req)  f_single_reqs        <- mkFIFOF1;
-   FIFOF #(Bit #(64))   f_single_write_data  <- mkFIFOF1;
+   FIFOF #(Bit #(32))   f_single_write_data  <- mkFIFOF1;
    FIFOF #(Read_Data)   f_single_read_data   <- mkFIFOF1;
    // ****************************************************************
    // BEHAVIOR: READ RESPONSES (for line and single clients)
@@ -190,76 +188,43 @@ module mkTCM_AXI4_Adapter #(
    // may reads can be outstanding
    // For Magritte synthesis reduced mkFIFOF to mkFIFOF1 as in Magritte only one
    // request can be outstanding
-   FIFOF #(Tuple3 #(Bit #(2),     // size_code
-		    Bit #(1),     // addr bit [2]
-		    Bit #(8)))    // Num beats read-data
+   FIFOF #(Tuple2 #(Bit #(2),     // size_code
+		    Bit #(1)))    // addr bit [2]
 `ifdef SYNTHESIS
          f_rd_rsp_control <- mkFIFOF1;
 `else
          f_rd_rsp_control <- mkFIFOF;
 `endif
-   match { .rd_req_size_code, .rd_req_addr_bit_2, .rd_req_beats } = f_rd_rsp_control.first;
-
-   // Count beats in a single transaction.
-   // Note: beat-count is for fabric, not for client-side data.
-   // Former is 2 x latter for Fabric32 for 64b line data and 64b single data.
-
-   Reg #(Bit #(8)) rg_rd_beat <- mkRegU;
+   match { .rd_req_size_code, .rd_req_addr_bit_2 } = f_rd_rsp_control.first;
 
    // The following are needed for FABRIC32 during each burst response
    // to assemble lower and upper 32b into a 64b response to client
    Reg #(Bool)       rg_rd_data_lower32_ok <- mkRegU;
    Reg #(Bit #(32))  rg_rd_data_lower32    <- mkRegU;
 
-   rule rl_read_data (rg_rd_beat < rd_req_beats);
-      rg_rd_beat <= rg_rd_beat + 1;
-      Bool last_beat = (rg_rd_beat == (rd_req_beats - 1));
-      if (last_beat) begin
-	 f_rd_rsp_control.deq;
-	 rg_rd_rsps_pending <= rg_rd_rsps_pending - 1;
-      end
-
+   // All responses are single beat as these are all single requests whose
+   // widths are less than or equal to bus-width
+   rule rl_read_data (rg_rd_rsps_pending);
+      f_rd_rsp_control.deq;
+      rg_rd_rsps_pending <= False;
       let rd_data <- pop_o (master_xactor.o_rd_data);
 
       Bool      ok   = (rd_data.rresp == axi4_resp_okay);
-      Bit #(64) data = zeroExtend (rd_data.rdata);
+`ifdef FABRIC32
+      let rsp = Read_Data {ok: ok, data: rd_data.rdata};
+`endif
 
-      Bool do_enq    = True;
-      Bool even_beat = (rg_rd_beat [0] == 1'b0);
-
-      // FABRIC32 adjustments
-      if (valueOf (Wd_Data) == 32) begin
-	 if (rd_req_size_code != 2'b11) begin
-	    // B, H, W: only 1 beat
-	    Bool in_upper32 = (rd_req_addr_bit_2 == 1'b1);
-	    if (in_upper32)
-	       data = { data [31:0], 32'b0 };
-	    do_enq = True;
-	 end
-	 else if (even_beat) begin // D, even beat
-	    // Just save lower 32b; enq response only after next beat
-	    rg_rd_data_lower32_ok <= ok;
-	    rg_rd_data_lower32    <= data [31:0];
-	    do_enq = False;
-	 end
-	 else begin // D, odd beat
-	    ok   = (rg_rd_data_lower32_ok && ok);
-	    data = { data [31:0], rg_rd_data_lower32 };
-	    do_enq = True;
-	 end
-      end	       
-
-      if (do_enq) begin
-	 let rsp = Read_Data {ok: ok, data: data};
-	 f_single_read_data.enq (rsp);
-      end
+`ifdef FABRIC64
+      Bit #(32) data = (rd_req_addr_bit_2 == 1'b1) ? rd_data.rdata[63:32]
+                                                   : rd_data.rdata[31:0];
+      let rsp = Read_Data {ok: ok, data: data};
+`endif
+      f_single_read_data.enq (rsp);
 
       if (verbosity >= 1) begin
 	 $display ("%0d: %m.rl_read_data: ", cur_cycle);
-	 if (rg_rd_client_id == client_id_line) $write ("    line (beat %0d)", rg_rd_beat);
-	 else                                   $write ("     single");
-	 $write (" ok %0d data %0h", pack (ok), data);
-	 if ((valueOf (Wd_Data) == 32) && even_beat) $write (" (lower 32b of 64b)");
+	 $write ("     single");
+	 $write (" ok %0d data %08h", pack (rsp.ok), rsp.data);
 	 $display ("");
       end
    endrule: rl_read_data
@@ -268,9 +233,8 @@ module mkTCM_AXI4_Adapter #(
    // BEHAVIOR: Single read requests (not a burst)
 
    rule rl_single_read_req (f_single_reqs.first.is_read
-			    && rg_ddr4_ready
-			    && (rg_rd_rsps_pending < '1)
-			    && (rg_wr_rsps_pending == 0));
+			    && (!rg_rd_rsps_pending)
+			    && (!rg_wr_rsps_pending));
       let         req        <- pop (f_single_reqs);
       Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
       AXI4_Size   fabric_size = fv_size_code_to_AXI4_Size (req.size_code);
@@ -279,19 +243,9 @@ module mkTCM_AXI4_Adapter #(
 	 $display ("%0d: %m.rl_single_read_req:\n    AXI4_Rd_Addr{araddr %0h arlen 0 (burst length 1) ",
 		   cur_cycle, fabric_addr,  fshow_AXI4_Size (fabric_size), "}");
 
-      Bit #(8)    num_beats   = 1;
-
-      // FABRIC32 adjustments
-      if ((valueOf (Wd_Data) == 32) && (req.size_code == 2'b11)) begin
-	 fabric_size = axsize_4;
-	 num_beats   = 2;
-      end
-      // Note: AXI4 codes a burst length of 'n' as 'n-1'
-      AXI4_Len fabric_len = num_beats - 1;
-
       let mem_req_rd_addr = AXI4_Rd_Addr {arid:     fabric_default_id,
 					  araddr:   fabric_addr,
-					  arlen:    0,           // burst len = arlen+1
+					  arlen:    0, // burst len = arlen+1
 					  arsize:   fabric_size,
 					  arburst:  fabric_default_burst,
 					  arlock:   fabric_default_lock,
@@ -302,10 +256,9 @@ module mkTCM_AXI4_Adapter #(
 					  aruser:   fabric_default_user};
       master_xactor.i_rd_addr.enq (mem_req_rd_addr);
 
-      f_rd_rsp_control.enq (tuple3 (req.size_code, req.addr [2], num_beats));
+      f_rd_rsp_control.enq (tuple2 (req.size_code, req.addr [2]));
       rg_rd_client_id    <= client_id_single;
-      rg_rd_beat         <= 0;
-      rg_rd_rsps_pending <= rg_rd_rsps_pending + 1;
+      rg_rd_rsps_pending <= True;
    endrule
 
    // ****************************************************************
@@ -316,14 +269,14 @@ module mkTCM_AXI4_Adapter #(
       let wr_resp <- pop_o (master_xactor.o_wr_resp);
 
       Bool err = False;
-      if (rg_wr_rsps_pending == 0) begin
+      if (!rg_wr_rsps_pending) begin
 	 rg_write_error <= True;
 
 	 $display ("%0d: %m.rl_write_rsp: ERROR not expecting any write-response:", cur_cycle);
 	 $display ("    ", fshow (wr_resp));
       end
       else begin
-	 rg_wr_rsps_pending <= rg_wr_rsps_pending - 1;
+	 rg_wr_rsps_pending <= False;
 	 if (wr_resp.bresp != axi4_resp_okay) begin
 	    rg_write_error <= True;
 	    if (verbosity >= 1) begin
@@ -340,84 +293,67 @@ module mkTCM_AXI4_Adapter #(
 
    // ****************************************************************
    // BEHAVIOR: Write data (for both line and single)
-   // Assume that data is already lane-aligned for 64b data width.
+   // Assume that data is already lane-aligned for 32b data width.
    // For Magritte synthesis reduced mkFIFOF to mkFIFOF1 as in Magritte only one
    // request can be outstanding
 
-   FIFOF #(Tuple4 #(Bit #(1),     // client_id
-		    Bit #(2),     // size_code
-		    Bit #(3),     // addr lsbs
-		    Bit #(8)))    // Num beats in write-data
+   FIFOF #(Tuple3 #(Bit #(1),    // client_id
+		    Bit #(2),    // size_code
+		    Bit #(3)     // addr lsbs
+		   ))            // Num beats in write-data
 `ifdef SYNTHESIS
          f_wr_data_control <- mkFIFOF1;
 `else
          f_wr_data_control <- mkFIFOF;
 `endif
-   match {.wr_client_id,
-	  .wr_req_size_code,
-	  .wr_req_addr_lsbs,
-	  .wr_req_beats } = f_wr_data_control.first;
 
-   // Count beats in a single transaction
-   // Note: beat-count is for fabric, not for client-side data.
-   // Former is 2 x latter for Fabric32 for 64b line data and 64b single data.
-   Reg #(Bit #(8)) rg_wr_beat <- mkReg (0);
+   // All write data bursts are single beat as these are all single requests whose
+   // widths are less than or equal to bus-width
+   rule rl_write_data;
+      match {.wr_client_id,
+             .wr_req_size_code,
+             .wr_req_addr_lsbs} = f_wr_data_control.first;
 
-   rule rl_write_data (rg_ddr4_ready && (rg_wr_beat < wr_req_beats));
-      Bool last = (rg_wr_beat == (wr_req_beats - 1));
-      if (last) begin
-	 f_wr_data_control.deq;
-	 rg_wr_beat <= 0;
-      end
-      else
-	 rg_wr_beat <= rg_wr_beat + 1;
+      f_wr_data_control.deq;
 
-      Bit #(64) data = f_single_write_data.first;
+      Bit #(32) data = f_single_write_data.first;
 
       // Compute strobe from size and address
-      Bit #(8)  strb = case (wr_req_size_code)
-			  2'b00: 8'h_01;
-			  2'b01: 8'h_03;
-			  2'b10: 8'h_0F;
-			  2'b11: 8'h_FF;
+      Bit #(4)  strb = case (wr_req_size_code)
+			  2'b00: 4'h_1;
+			  2'b01: 4'h_3;
+			  2'b10: 4'h_F;
+                          2'b11: 4'h_F;   // XXX Not supported
 		       endcase;
-      strb = (strb << wr_req_addr_lsbs);
+      Bit #(4) lsbs = extend (wr_req_addr_lsbs[1:0]);
+      strb = (strb << lsbs);
+
+`ifdef FABRIC32
+      let mem_req_wr_data = AXI4_Wr_Data {
+           wdata: data
+         , wstrb: strb
+         , wlast: True
+         , wuser: fabric_default_user};
       
-      Bool do_deq    = True;
-      Bool even_beat = (rg_wr_beat [0] == 1'b0);
+`endif
 
-      // FABRIC32 adjustments
-      if (valueOf (Wd_Data) == 32) begin
-	 if (wr_req_size_code != 2'b11) begin
-	    // B, H, W: only 1 beat
-	    Bool in_upper32 = (wr_req_addr_lsbs [2] == 1'b1);
-	    if (in_upper32) begin
-	       data = { 32'b0, data [63:32] };
-	       strb = {  4'b0, strb [7:4] };
-	    end
-	    do_deq = True;
-	 end
-	 else if (even_beat) begin  // D, even beat
-	    do_deq = False;
-	 end
-	 else begin // D, odd beat
-	    data   = { 32'b0, data [63:32] };
-	    strb   = '1;
-	    do_deq = True;
-	 end
-      end
+`ifdef FABRIC64
+      let upper_32 = (wr_req_addr_lsbs[2] == 1'b1);
+      let mem_req_wr_data = AXI4_Wr_Data {
+           wdata: (upper_32 ? {data, 32'b0} : extend (data))
+         , wstrb: (upper_32 ? {strb, 4'b0}  : extend (strb))
+         , wlast:  True
+         , wuser:  fabric_default_user};
+`endif
 
-      let mem_req_wr_data = AXI4_Wr_Data {wdata:  truncate (data),
-					  wstrb:  truncate (strb),
-					  wlast:  last,
-					  wuser:  fabric_default_user};
       master_xactor.i_wr_data.enq (mem_req_wr_data);
-
-      if (do_deq) f_single_write_data.deq;
+      f_single_write_data.deq;
 
       if (verbosity >= 1) begin
-	 $display ("%0d: %m.rl_write_data: beat %0d/%0d", cur_cycle, rg_wr_beat, wr_req_beats);
-	 $display ("    AXI4_Wr_Data{%0h strb %0h last %0d}", data, strb, pack (last));
+	 $display ("%0d: %m.rl_write_data", cur_cycle);
+	 $display ("    AXI4_Wr_Data{%0h strb %0h last %0d}"
+            , mem_req_wr_data.wdata, mem_req_wr_data.wstrb
+            , pack (mem_req_wr_data.wlast));
       end
    endrule
 
@@ -432,27 +368,17 @@ module mkTCM_AXI4_Adapter #(
    // BEHAVIOR: Single write requests (not a burst)
 
    rule rl_single_write_req ((! f_single_reqs.first.is_read)
-			     && rg_ddr4_ready
-			     && (rg_rd_rsps_pending == 0)
-			     && (rg_wr_rsps_pending < '1));
+			     && (!rg_rd_rsps_pending)
+			     && (!rg_wr_rsps_pending));
       let req <- pop (f_single_reqs);
 
       Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
       AXI4_Size   fabric_size = fv_size_code_to_AXI4_Size (req.size_code);
-      Bit #(8)    num_beats   = 1;
-
-      // FABRIC32 adjustments
-      if ((valueOf (Wd_Data) == 32) && (req.size_code == 2'b11)) begin
-	 fabric_size = axsize_4;
-	 num_beats   = 2; 
-      end
-      // Note: AXI4 codes a burst length of 'n' as 'n-1'
-      AXI4_Len fabric_len = num_beats - 1;
 
       // AXI4 Write-Address channel
       let mem_req_wr_addr = AXI4_Wr_Addr {awid:     fabric_default_id,
 					  awaddr:   fabric_addr,
-					  awlen:    fabric_len,
+					  awlen:    0, // burst len = arlen+1
 					  awsize:   fabric_size,
 					  awburst:  fabric_default_burst,
 					  awlock:   fabric_default_lock,
@@ -463,18 +389,17 @@ module mkTCM_AXI4_Adapter #(
 					  awuser:   fabric_default_user};
       master_xactor.i_wr_addr.enq (mem_req_wr_addr);
 
-      f_wr_data_control.enq (tuple4 (client_id_single,
+      f_wr_data_control.enq (tuple3 (client_id_single,
 				     req.size_code,
-				     req.addr [2:0],
-				     num_beats));
-      rg_wr_rsps_pending <= rg_wr_rsps_pending + 1;
+				     req.addr [2:0]));
+      rg_wr_rsps_pending <= True;
 
       // Debugging
       if (verbosity >= 1)
-	 $display ("%0d: %m.rl_single_write_req: AXI4_Wr_Addr{awaddr %0h awlen %0d burst-length %0d ",
+	 $display ("%0d: %m.rl_single_write_req: AXI4_Wr_Addr{awaddr %0h awlen %0d ",
 		   cur_cycle,
-		   fabric_addr,
-		   fabric_len, num_beats,
+		   mem_req_wr_addr.awaddr,
+		   mem_req_wr_addr.awlen,
 		   fshow_AXI4_Size (fabric_size),
 		   " incr}");
    endrule
@@ -506,15 +431,10 @@ module mkTCM_AXI4_Adapter #(
    // Misc. control and status
 
    // Signal that DDR4 has been initialized and is ready to accept requests
-   method Action ma_ddr4_ready;
-      rg_ddr4_ready <= True;
-      $display ("%0d: %m.ma_ddr4_ready: Enabling memory accesses", cur_cycle);
-   endmethod
+   method Action ma_ddr4_ready = noAction;
 
    // Misc. status; 0 = running, no error
-   method Bit #(8) mv_status;
-      return (rg_write_error ? 1 : 0);
-   endmethod
+   method Bit #(8) mv_status = 0;
 
 endmodule
 
@@ -545,7 +465,7 @@ endinterface
 typedef enum {STATE_READY,
               STATE_READ_RESPONDING,
               STATE_BURST_WRITE} State deriving (Bits, Eq, FShow);
-
+/*
 // ----------------------------------------------------------------
 module mkTCM_DMA_AXI4_Adapter #(
      BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
@@ -672,7 +592,7 @@ module mkTCM_DMA_AXI4_Adapter #(
    Bool wr_addr_aligned = (
          (wr_byte_in_tcm_word == 0)
       || (wr_byte_in_tcm_word == 4));
-   Bool lower_word = (wr_byte_in_tcm_word == 0);
+   Bool w_lower_word = (wr_byte_in_tcm_word == 0);
 `elsif FABRIC64
    Bool wr_addr_aligned = (wr_byte_in_tcm_word == 0);
 `endif
@@ -715,7 +635,7 @@ module mkTCM_DMA_AXI4_Adapter #(
 
       // Strobe generation
 `ifdef FABRIC32
-      Bit #(Bytes_per_TCM_Word) strobe = lower_word ? 8'hf : 8'hf0; 
+      Bit #(Bytes_per_TCM_Word) strobe = w_lower_word ? 8'hf : 8'hf0; 
 `elsif FABRIC64
       Bit #(Bytes_per_TCM_Word) strobe = 8'hff;
 `endif
@@ -756,5 +676,6 @@ module mkTCM_DMA_AXI4_Adapter #(
 
    interface dma_server = slave_xactor.axi_side;
 endmodule
+*/
 
 endpackage
