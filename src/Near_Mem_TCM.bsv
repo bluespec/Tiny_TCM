@@ -131,8 +131,8 @@ interface DTCM_IFC;
    method Action ma_ddr4_ready;
 
 `ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Bit #(64) tohost_addr);
-   method Bit #(64) mv_tohost_value;
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
+   method Fabric_Data mv_tohost_value;
 `endif
 
    // Misc. status; 0 = running, no error
@@ -294,11 +294,11 @@ module mkNear_Mem (Near_Mem_IFC);
    // ----------------
    // For ISA tests: watch memory writes to <tohost> addr
 `ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Bit #(64) tohost_addr);
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
       dmem_port.set_watch_tohost (watch_tohost, tohost_addr);
    endmethod
 
-   method Bit #(64) mv_tohost_value = dmem_port.mv_tohost_value;
+   method Fabric_Data mv_tohost_value = dmem_port.mv_tohost_value;
 `endif
 
    // ----------------
@@ -357,8 +357,8 @@ module mkDTCM #(
    // "tohost" addr on which to monitor writes, for standard ISA tests.
    // These are set by the 'set_watch_tohost' method but are otherwise read-only.
    Reg #(Bool)      rg_watch_tohost <- mkReg (False);
-   Reg #(Bit #(64)) rg_tohost_addr  <- mkReg ('h_8000_1000);
-   Reg #(Bit #(64)) rg_tohost_value <- mkReg (0);
+   Reg #(Fabric_Addr) rg_tohost_addr  <- mkReg ('h_8000_1000);
+   Reg #(Fabric_Data) rg_tohost_value <- mkReg (0);
 `endif
 `endif
 
@@ -666,14 +666,14 @@ module mkDTCM #(
    // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
 
 `ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Bit #(64) tohost_addr);
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
       rg_watch_tohost <= watch_tohost;
       rg_tohost_addr  <= tohost_addr;
       $display ("%0d: %m.set_watch_tohost: watch %0d, addr %08h",
                 cur_cycle, watch_tohost, tohost_addr);
    endmethod
 
-   method Bit #(64) mv_tohost_value;
+   method Fabric_Data mv_tohost_value;
       return rg_tohost_value;
    endmethod
 `endif
