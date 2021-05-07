@@ -1,0 +1,3 @@
+[submodule "fabrics/AHB-Lite"]
+	path = fabrics/AHB-Lite
+	url = git@github.com:bluespec/AHB-Lite.git
