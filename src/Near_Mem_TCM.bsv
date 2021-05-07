@@ -78,11 +78,20 @@ import TCM_Decls        :: *;
 import Near_Mem_IFC     :: *;
 import MMU_Cache_Common :: *;
 import MMIO             :: *;
+`ifdef FABRIC_AXI4
 import TCM_AXI4_Adapter :: *;
+`endif
 
-import SoC_Map          :: *;
 import Fabric_Defs      :: *;
 import AXI4_Types       :: *;
+
+`ifdef FABRIC_AHBL
+import AHBL_Types       :: *;
+import AHBL_Defs        :: *;
+import TCM_AHBL_Adapter :: *;
+`endif
+
+import SoC_Map          :: *;
 
 // ================================================================
 // Exports
@@ -125,7 +134,12 @@ interface DTCM_IFC;
 
    // Fabric side
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
+`ifdef FABRIC_AXI4
    interface Near_Mem_Fabric_IFC mem_master;
+`endif
+`ifdef FABRIC_AHBL
+   interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
+`endif
 
    // Inform core that DDR4 has been initialized and is ready to accept requests
    method Action ma_ddr4_ready;
@@ -324,7 +338,7 @@ module mkDTCM #(
    //            2: rule firings
    //            3: + detail
    Bit#(2) verbosity_mmio = 3;
-   Bit#(2) verbosity_axi4 = 3;
+   Bit#(2) verbosity_fabric = 3;
 
    // Module state
    Reg #(Bool)                rg_rsp_from_mmio  <- mkReg (False);
@@ -351,6 +365,11 @@ module mkDTCM #(
    FIFOF #(Exc_Code)  f_rsp_exc_code      <- mkBypassFIFOF;
    FIFOF #(Bool)      f_rsp_exc           <- mkBypassFIFOF;
 
+   // FIFOs to interact with external fabric (MMIO <-> AHB/AXI)
+   FIFOF #(Single_Req)        f_mem_req         <- mkFIFOF1;
+   FIFOF #(Bit #(32))         f_mem_wdata       <- mkFIFOF1;
+   FIFOF #(Read_Data)         f_mem_rdata       <- mkFIFOF1;
+
 `ifndef SYNTHESIS
 `ifdef WATCH_TOHOST
    // See NOTE: "tohost" above.
@@ -368,14 +387,18 @@ module mkDTCM #(
                                                 , f_rsp_final_st_val
                                                 , f_rsp_exc_code
                                                 , f_rsp_exc
+                                                , f_mem_req
+                                                , f_mem_wdata
+                                                , f_mem_rdata
                                                 , verbosity_mmio);
 
-   TCM_AXI4_Adapter_IFC axi4_adapter<- mkTCM_AXI4_Adapter (verbosity_axi4);
-
-   // Connect MMIO's memory interface to AXI4 fabric adapter
-   mkConnection (mmio.g_mem_req,       axi4_adapter.p_mem_single_req);
-   mkConnection (mmio.g_write_data,    axi4_adapter.p_mem_single_write_data);
-   mkConnection (mmio.p_mem_read_data, axi4_adapter.g_mem_single_read_data);
+`ifdef FABRIC_AXI4
+   TCM_AXI4_Adapter_IFC fabric_adapter<- mkTCM_AXI4_Adapter (verbosity_fabric);
+`endif
+`ifdef FABRIC_AHBL
+   TCM_AHBL_Adapter_IFC fabric_adapter<- mkTCM_AHBL_Adapter (
+      verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
+`endif
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -657,7 +680,7 @@ module mkDTCM #(
 
    // Fabric side
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
-   interface mem_master = axi4_adapter.mem_master;
+   interface mem_master = fabric_adapter.mem_master;
 
    // ----------------------------------------------------------------
    // Misc. control and status
@@ -678,10 +701,10 @@ module mkDTCM #(
    endmethod
 `endif
 
-   method Action ma_ddr4_ready = axi4_adapter.ma_ddr4_ready;
+   method Action ma_ddr4_ready = fabric_adapter.ma_ddr4_ready;
 
    // Misc. status; 0 = running, no error
-   method Bit#(8) mv_status = axi4_adapter.mv_status;
+   method Bit#(8) mv_status = fabric_adapter.mv_status;
 endmodule
 
 // ================================================================

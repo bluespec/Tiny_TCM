@@ -50,8 +50,6 @@ endinterface
 interface DMMIO_IFC;
    method Action start;
 
-   // method Tuple3 #(Bool, Bit #(64), Bit #(64)) result;
-
    interface Get #(Single_Req)  g_mem_req;
    interface Get #(Bit #(32))   g_write_data;
    interface Put #(Read_Data)   p_mem_read_data;
@@ -69,11 +67,14 @@ deriving (Bits, Eq, FShow);
 // fetches (loads, stores, AMO)
 
 module mkDMMIO #(
-     FIFOF #(MMU_Cache_Req) f_req
-   , FIFOF #(Bit #(32)) f_rsp_word32
-   , FIFOF #(Bit #(32)) f_rsp_final_st_val
-   , FIFOF #(Exc_Code)  f_rsp_exc_code
-   , FIFOF #(Bool)      f_rsp_exc
+     FIFOF #(MMU_Cache_Req)   f_req
+   , FIFOF #(Bit #(32))       f_rsp_word32
+   , FIFOF #(Bit #(32))       f_rsp_final_st_val
+   , FIFOF #(Exc_Code)        f_rsp_exc_code
+   , FIFOF #(Bool)            f_rsp_exc
+   , FIFOF #(Single_Req)      f_mem_reqs;
+   , FIFOF #(Bit #(32))       f_mem_wdata;
+   , FIFOF #(Read_Data)       f_mem_rdata;
    , Bit#(2) verbosity
 ) (DMMIO_IFC);
    
@@ -82,13 +83,6 @@ module mkDMMIO #(
    // Non-VM MMIO: PA = VA 
    let req = f_req.first;
    let req_pa  = fn_WordXL_to_PA (req.va);
-
-   // ----------------
-   // Memory interface
-
-   FIFOF #(Single_Req)  f_single_reqs  <- mkFIFOF1;
-   FIFOF #(Read_Data)   f_read_data    <- mkFIFOF1;
-   FIFOF #(Bit #(32))   f_write_data   <- mkFIFOF1;
 
    // ----------------------------------------------------------------
    // Help-function for single-writes to mem
@@ -102,8 +96,8 @@ module mkDMMIO #(
 	 let r   = Single_Req {is_read:   False,
 			       addr:      zeroExtend (req_pa),
 			       size_code: req.f3 [1:0]};
-	 f_single_reqs.enq (r);
-	 f_write_data.enq (data);
+	 f_mem_reqs.enq (r);
+	 f_mem_wdata.enq (data);
       endaction
    endfunction
 
@@ -132,7 +126,7 @@ module mkDMMIO #(
    // (all ops other than store and SC)
 
    rule rl_read_rsp (rg_fsm_state == FSM_READ_RSP);
-      let read_data <- pop (f_read_data);
+      let read_data <- pop (f_mem_rdata);
 
       if (verbosity >= 1) begin
 	 $display ("%0d: %m.rl_read_rsp: vaddr %0h  paddr %0h", cur_cycle, req.va, req_pa);
@@ -245,13 +239,6 @@ module mkDMMIO #(
       // rg_err <= False;
       rg_fsm_state <= FSM_START;
    endmethod
-
-   // ----------------
-   // Memory interface (for refills, writebacks)
-
-   interface Get g_mem_req       = toGet (f_single_reqs);
-   interface Get g_write_data    = toGet (f_write_data);
-   interface Put p_mem_read_data = toPut (f_read_data);
 endmodule
 
 // ================================================================
