@@ -701,10 +701,22 @@ module mkDTCM #(
    endmethod
 `endif
 
+`ifdef FABRIC_AXI4
    method Action ma_ddr4_ready = fabric_adapter.ma_ddr4_ready;
+`endif
 
+`ifdef FABRIC_AHBL
+   method Action ma_ddr4_ready = noAction;
+`endif
+
+`ifdef FABRIC_AXI4
    // Misc. status; 0 = running, no error
    method Bit#(8) mv_status = fabric_adapter.mv_status;
+`endif
+`ifdef FABRIC_AHBL
+   // Misc. status; 0 = running, no error (unimplemented)
+   method Bit#(8) mv_status = 0;
+`endif
 endmodule
 
 // ================================================================

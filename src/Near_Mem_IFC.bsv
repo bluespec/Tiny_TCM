@@ -17,6 +17,11 @@
 //  - As a TCM (Tightly-Coupled Memory)
 //        Fabric-side IMem Client is not used (all fabric traffic is data or I/O mem)
 
+// Macros
+// FABRIC_AXI4 : External fabric is AXI4
+// FABRIC_AHBL : External fabric is AHB-L. 
+// Both macros should not be defined.
+
 package Near_Mem_IFC;
 
 // ================================================================
@@ -40,6 +45,11 @@ import TCM_Decls        :: *;
 import MMU_Cache_Common :: *;
 import AXI4_Types       :: *;
 import Fabric_Defs      :: *;
+
+`ifdef FABRIC_AHBL
+import AHBL_Types       :: *;
+import AHBL_Defs        :: *;
+`endif
 
 `ifdef INCLUDE_DMEM_SLAVE
 import AXI4_Lite_Types  :: *;
@@ -109,7 +119,7 @@ interface Near_Mem_IFC;
    // CPU side
    interface IMem_IFC  imem;
 
-   // Fabric side -- unused for TCMs
+   // Fabric side -- unused for TCMs (always a dummy AXI4 port for now)
    interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) imem_master;
 
    // ----------------
@@ -118,8 +128,15 @@ interface Near_Mem_IFC;
    // CPU side
    interface DMem_IFC  dmem;
 
+`ifdef FABRIC_AXI4
    // Fabric side (MMIO initiator interface)
    interface Near_Mem_Fabric_IFC mem_master;
+`endif
+
+`ifdef FABRIC_AHBL
+   // Fabric side (MMIO initiator interface)
+   interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
+`endif
 
    // ----------------------------------------------------------------
    // Optional AXI4-Lite DMem slave interface
