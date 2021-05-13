@@ -393,7 +393,8 @@ module mkDTCM #(
                                                 , verbosity_mmio);
 
 `ifdef FABRIC_AXI4
-   TCM_AXI4_Adapter_IFC fabric_adapter<- mkTCM_AXI4_Adapter (verbosity_fabric);
+   TCM_AXI4_Adapter_IFC fabric_adapter<- mkTCM_AXI4_Adapter (
+      verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 `ifdef FABRIC_AHBL
    TCM_AHBL_Adapter_IFC fabric_adapter<- mkTCM_AHBL_Adapter (
