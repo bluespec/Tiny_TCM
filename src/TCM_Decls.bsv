@@ -9,7 +9,7 @@ import ISA_Decls     :: *;
 //
 // --- USER CONFIGURABLE
 typedef 32 TCM_XLEN;          // TCM Width
-Integer kB_per_TCM = 'h40;    // TCM Sizing: 64KB
+Integer kB_per_TCM = 'h80;    // TCM Sizing: 128KB
 // --- USER CONFIGURABLE
 //
 
