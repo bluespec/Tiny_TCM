@@ -11,7 +11,10 @@ package TCM_AXI4_Adapter;
 // The AXI4 bus master can be used with 32b or 64b buses, and manages
 // byte-lane alignment, number of beats in a burst, write-strobes,
 // etc. accordingly.
-
+//
+// The STANDALONE macro should be enabled when the Adapter is to be
+// instantiated in its own hierarchy or for standalone verification
+//
 // ================================================================
 // BSV lib imports
 
@@ -109,12 +112,14 @@ interface TCM_AXI4_Adapter_IFC;
    // Reset
    method Action  reset;
 
+`ifdef STANDALONE
    // ----------------
    // interface for word/sub-word read/write client
 
    interface Put #(Single_Req) p_mem_single_req;
    interface Put #(Bit #(32))  p_mem_single_write_data;
    interface Get #(Read_Data)  g_mem_single_read_data;
+`endif
 
    // ----------------
    // Fabric master interface
@@ -152,10 +157,23 @@ endfunction
 // ================================================================
 // MODULE IMPLEMENTATION
 
+`ifdef STANDALONE
 (* synthesize *)
+`endif
 module mkTCM_AXI4_Adapter #(
      parameter Bit #(2) verbosity
-   ) (TCM_AXI4_Adapter_IFC);
+`ifdef STANDALONE
+   // Structures to interace with the MMIO (sub-modules)
+   FIFOF #(Single_Req) f_single_reqs <- mkFIFOF1;
+   FIFOF #(Bit #(32))  f_single_write_data <- mkFIFOF1;
+   FIFOF #(Read_Data)  f_single_read_data <- mkFIFOF1;
+) (TCM_AXI4_Adapter_IFC);
+`else
+   // Structures to interace with the MMIO (interface args)
+   , FIFOF #(Single_Req) f_single_reqs
+   , FIFOF #(Bit #(32))  f_single_write_data
+   , FIFOF #(Read_Data)  f_single_read_data) (TCM_AXI4_Adapter_IFC);
+`endif
 
    // Verbosity: 0=quiet, 1 = rule firings
    // Integer verbosity = 1;
@@ -174,10 +192,7 @@ module mkTCM_AXI4_Adapter #(
    // AXI4 fabric request/response
    AXI4_Master_Xactor_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master_xactor <- mkAXI4_Master_Xactor;
 
-   // Memory request from MMIO
-   FIFOF #(Single_Req)  f_single_reqs        <- mkFIFOF1;
-   FIFOF #(Bit #(32))   f_single_write_data  <- mkFIFOF1;
-   FIFOF #(Read_Data)   f_single_read_data   <- mkFIFOF1;
+
    // ****************************************************************
    // BEHAVIOR: READ RESPONSES (for line and single clients)
    // The following registers identify the client, the beat, etc.
@@ -416,12 +431,16 @@ module mkTCM_AXI4_Adapter #(
          $display ("%0d: %m.reset", cur_cycle);
    endmethod
 
+
+`ifdef STANDALONE
    // ----------------
    // interface for word/sub-word read/write client
 
    interface Put p_mem_single_req        = toPut (f_single_reqs);
    interface Put p_mem_single_write_data = toPut (f_single_write_data);
    interface Get g_mem_single_read_data  = toGet (f_single_read_data);
+`endif
+
 
    // ----------------
    // Fabric master interface

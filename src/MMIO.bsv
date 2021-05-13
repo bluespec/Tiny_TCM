@@ -49,10 +49,6 @@ endinterface
 
 interface DMMIO_IFC;
    method Action start;
-
-   interface Get #(Single_Req)  g_mem_req;
-   interface Get #(Bit #(32))   g_write_data;
-   interface Put #(Read_Data)   p_mem_read_data;
 endinterface
 
 // ================================================================
@@ -72,9 +68,9 @@ module mkDMMIO #(
    , FIFOF #(Bit #(32))       f_rsp_final_st_val
    , FIFOF #(Exc_Code)        f_rsp_exc_code
    , FIFOF #(Bool)            f_rsp_exc
-   , FIFOF #(Single_Req)      f_mem_reqs;
-   , FIFOF #(Bit #(32))       f_mem_wdata;
-   , FIFOF #(Read_Data)       f_mem_rdata;
+   , FIFOF #(Single_Req)      f_mem_reqs
+   , FIFOF #(Bit #(32))       f_mem_wdata
+   , FIFOF #(Read_Data)       f_mem_rdata
    , Bit#(2) verbosity
 ) (DMMIO_IFC);
    
@@ -117,7 +113,7 @@ module mkDMMIO #(
       let r   = Single_Req {is_read:   True,
 			    addr:      zeroExtend (req_pa),
 			    size_code: req.f3 [1:0]};
-      f_single_reqs.enq (r);
+      f_mem_reqs.enq (r);
       rg_fsm_state <= FSM_READ_RSP;
    endrule
 
