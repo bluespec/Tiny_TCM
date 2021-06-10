@@ -198,6 +198,7 @@ module mkDMMIO #(
       rg_fsm_state    <= FSM_IDLE;
 
       // the outgoing response
+      f_rsp_word32.enq (req.st_value);    // dummy
       f_rsp_exc.enq (False);
       f_rsp_exc_code.enq (fv_exc_code_access_fault (req));
       f_rsp_final_st_val.enq (req.st_value);
