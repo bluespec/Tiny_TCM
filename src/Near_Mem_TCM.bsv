@@ -164,29 +164,19 @@ module mkNear_Mem (Near_Mem_IFC);
    //            1: Requests and responses
    //            2: rule firings
    //            3: + detail
-   Bit #(2) verbosity = 3;
+   Bit #(2) verbosity = 0;
 
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
 
    // ----------------
    // The RAM (used by IMem_Port, DMem_Port and Fabric_Port)
 
-`ifdef SYNTHESIS
-`ifdef TCM_BACK_DOOR
-   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore2BE (n_words_BRAM, config_output_register_BRAM);
-`else
-   BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore1BE (n_words_BRAM, config_output_register_BRAM);
-`endif
-`else
 `ifdef TCM_BACK_DOOR
    BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
       <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
 `else
    BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
       <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
-`endif
 `endif
 
    // ----------------
@@ -337,8 +327,8 @@ module mkDTCM #(
    //            1: Requests and responses
    //            2: rule firings
    //            3: + detail
-   Bit#(2) verbosity_mmio = 3;
-   Bit#(2) verbosity_fabric = 3;
+   Bit#(2) verbosity_mmio = 0;
+   Bit#(2) verbosity_fabric = 0;
 
    // Module state
    Reg #(Bool)                rg_rsp_from_mmio  <- mkReg (False);
