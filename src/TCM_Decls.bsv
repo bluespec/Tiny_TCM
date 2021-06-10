@@ -9,7 +9,17 @@ import ISA_Decls     :: *;
 //
 // --- USER CONFIGURABLE
 typedef 32 TCM_XLEN;          // TCM Width
-Integer kB_per_TCM = 'h80;    // TCM Sizing: 128KB
+`ifdef TCM_64K
+Integer kB_per_TCM = 'h40;    // TCM Sizing:  64 KB
+`elsif TCM_128K
+Integer kB_per_TCM = 'h80;    // TCM Sizing: 128 KB
+`elsif TCM_256K
+Integer kB_per_TCM = 'h100;   // TCM Sizing: 256 KB
+`elsif TCM_512K
+Integer kB_per_TCM = 'h200;   // TCM Sizing: 512 KB
+`elsif TCM_1024K
+Integer kB_per_TCM = 'h400;   // TCM Sizing: 1024 KB
+`endif
 // --- USER CONFIGURABLE
 //
 
