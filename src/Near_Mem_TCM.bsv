@@ -171,22 +171,20 @@ module mkNear_Mem (Near_Mem_IFC);
    // ----------------
    // The RAM (used by IMem_Port, DMem_Port and Fabric_Port)
 
-`ifdef TCM_BACK_DOOR
-   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
-`else
+//`ifdef TCM_BACK_DOOR
+//   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
+//      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
+//`else
    BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
       <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
-`endif
+//`endif
 
    // ----------------
    // Connections into the RAM
 
+let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
 `ifdef TCM_BACK_DOOR
-   let dmem_port <- mkDTCM   (ram.a, verbosity); // Uses port A only
-   let dma_port  <- mkTCM_DMA_AXI4_Adapter (ram.b, verbosity); // Uses port B only, at lower priority
-`else
-   let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
+   let dma_port  <- mkTCM_DMA_AXI4_Adapter (ram, verbosity); // Uses port B only, at lower priority
 `endif
 
    // Fence request/response queues
