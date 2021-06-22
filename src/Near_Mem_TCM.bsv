@@ -175,7 +175,7 @@ module mkNear_Mem (Near_Mem_IFC);
 //   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
 //      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
 //`else
-   BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
+   BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
       <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
 //`endif
 
@@ -318,7 +318,7 @@ endmodule: mkNear_Mem
 
 // DMem_Port into the TCM
 module mkDTCM #(
-       BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
+       BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
      , Bit #(2)                                           verbosity) (DTCM_IFC);
 
    // Verbosity: 0: quiet
@@ -407,8 +407,7 @@ module mkDTCM #(
 
       actionvalue
          Fabric_Addr fabric_va = fv_Addr_to_Fabric_Addr (req.va);
-         Addr tcm_byte_addr = fv_Fabric_Addr_to_Addr (
-            fabric_va - soc_map.m_tcm_addr_base);
+         Addr byte_addr = req.va;
          let st_value  = req.st_value;
          let f3        = req.f3;
 
@@ -478,8 +477,8 @@ module mkDTCM #(
 
          // arrange the store bits in the appropriate byte lanes
          match {.byte_en, .ram_st_value} = fn_byte_adjust_write (
-            f3, tcm_byte_addr, st_value);
-         Addr tcm_word_addr = (tcm_byte_addr >> bits_per_byte_in_tcm_word);
+            f3, byte_addr, st_value);
+         TCM_INDEX word_addr = truncate (byte_addr >> bits_per_byte_in_tcm_word);
 
          if (verbosity >= 1)
             $display ("      (RAM byte_en %08b) (RAM data %08h)"
@@ -490,7 +489,7 @@ module mkDTCM #(
 `ifdef ISA_A
          if (! sc_fail)
 `endif
-            ram.put (byte_en, tcm_word_addr, ram_st_value);
+            ram.put (byte_en, word_addr, ram_st_value);
 `ifdef ISA_A
          Bit #(32) final_st_val = sc_fail ? 0 : ram_st_value;
 `else
@@ -646,8 +645,7 @@ module mkDTCM #(
             // The read to the RAM is initiated here. If it is a
             // CACHE_ST or AMO store, the actual write happens in
             // the response phase or AMO phase
-            Addr word_addr = fv_Fabric_Addr_to_Addr (
-               (fabric_addr - soc_map.m_tcm_addr_base) >> bits_per_byte_in_tcm_word);
+            TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
             ram.put (0, word_addr, ?);
          end
 

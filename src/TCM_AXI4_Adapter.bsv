@@ -492,7 +492,7 @@ typedef enum {STATE_READY,
 
 // ----------------------------------------------------------------
 module mkTCM_DMA_AXI4_Adapter #(
-     BRAM_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
+     BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
    , Bit #(2)                                           verbosity) (TCM_DMA_AXI4_Adapter_IFC);
 
    // Module state
@@ -528,7 +528,8 @@ module mkTCM_DMA_AXI4_Adapter #(
    let rda              = slave_xactor.o_rd_addr.first;
    let rd_byte_addr     = rda.araddr;
    let tcm_base_addr    = soc_map.m_tcm_addr_base;
-   let rd_ram_word_addr = ((rd_byte_addr - tcm_base_addr) >> bits_per_byte_in_tcm_word);
+   TCM_INDEX rd_ram_word_addr = truncate (
+      fv_Fabric_Addr_to_Addr (rd_byte_addr) >> bits_per_byte_in_tcm_word);
 
    Bool rd_addr_valid   = fn_is_tcm_addr (rd_byte_addr);
 
@@ -569,7 +570,7 @@ module mkTCM_DMA_AXI4_Adapter #(
       // Adjust RAM address to read the upper word
       if (upper_word) rd_ram_word_addr = rd_ram_word_addr + 1;
 `endif
-      ram.put (0, fv_Fabric_Addr_to_Addr (rd_ram_word_addr), ?);
+      ram.put (0, rd_ram_word_addr, ?);
       rg_state <= STATE_READ_RESPONDING;
 
       if (verbosity > 1)
@@ -610,8 +611,8 @@ module mkTCM_DMA_AXI4_Adapter #(
    let wrd = slave_xactor.o_wr_data.first;
 
    let wr_byte_addr     = wra.awaddr;
-   let wr_ram_word_addr = (
-      (wr_byte_addr - tcm_base_addr) >> bits_per_byte_in_tcm_word);
+   TCM_INDEX wr_ram_word_addr = truncate (
+      fv_Fabric_Addr_to_Addr (wr_byte_addr) >> bits_per_byte_in_tcm_word);
 
    Bool wr_addr_valid   = fn_is_tcm_addr (wr_byte_addr);
 
@@ -681,7 +682,7 @@ module mkTCM_DMA_AXI4_Adapter #(
 `endif
 
       // Write word to ram
-      ram.put (strobe, fv_Fabric_Addr_to_Addr (wr_ram_word_addr), tcm_wdata);
+      ram.put (strobe, wr_ram_word_addr, tcm_wdata);
 
       // Send response
       let wrr = AXI4_Wr_Resp {

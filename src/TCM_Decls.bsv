@@ -39,6 +39,13 @@ endfunction
 
 Integer bytes_per_TCM = kB_per_TCM * 'h400;
 
+// LSBs to address a byte in the TCMs
+typedef TAdd# (TLog# (KB_PER_TCM), TLog #(1024)) TCM_Addr_LSB;
+Integer tcm_addr_lsb = valueOf (TCM_Addr_LSB);
+
+// Indices into the ITCM and DTCM (TCM word aligned)
+typedef Bit #(TAdd #(TLog #(KB_PER_TCM), 7)) TCM_INDEX;//(KB*1024)/ bytes_per_tcm_word
+
 // size of the BRAM in TCM_Word(s). the addition of the extra term
 // is to prevent rounding down in case bytes_per_word is not a
 // power of two.
