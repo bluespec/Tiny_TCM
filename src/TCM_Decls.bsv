@@ -10,15 +10,15 @@ import ISA_Decls     :: *;
 // --- USER CONFIGURABLE
 typedef 32 TCM_XLEN;          // TCM Width
 `ifdef TCM_64K
-Integer kB_per_TCM = 'h40;    // TCM Sizing:  64 KB
+typedef 64 KB_PER_TCM;
 `elsif TCM_128K
-Integer kB_per_TCM = 'h80;    // TCM Sizing: 128 KB
+typedef 128 KB_PER_TCM;
 `elsif TCM_256K
-Integer kB_per_TCM = 'h100;   // TCM Sizing: 256 KB
+typedef 256 KB_PER_TCM;
 `elsif TCM_512K
-Integer kB_per_TCM = 'h200;   // TCM Sizing: 512 KB
+typedef 512 KB_PER_TCM;
 `elsif TCM_1024K
-Integer kB_per_TCM = 'h400;   // TCM Sizing: 1024 KB
+typedef 1024 KB_PER_TCM;
 `endif
 // --- USER CONFIGURABLE
 //
@@ -37,19 +37,18 @@ function  Byte_in_TCM_Word fn_addr_to_byte_in_tcm_word (Addr a);
    return a [addr_hi_byte_in_tcm_word : addr_lo_byte_in_tcm_word ];
 endfunction
 
-Integer bytes_per_TCM = kB_per_TCM * 'h400;
+Integer kb_per_tcm =   valueOf (KB_PER_TCM);   // TCM Sizing:  64 KB
+Integer bytes_per_TCM = kb_per_tcm * 'h400;
 
 // LSBs to address a byte in the TCMs
 typedef TAdd# (TLog# (KB_PER_TCM), TLog #(1024)) TCM_Addr_LSB;
 Integer tcm_addr_lsb = valueOf (TCM_Addr_LSB);
 
-// Indices into the ITCM and DTCM (TCM word aligned)
-typedef Bit #(TAdd #(TLog #(KB_PER_TCM), 7)) TCM_INDEX;//(KB*1024)/ bytes_per_tcm_word
+// Indices into the TCM
+typedef Bit #(TAdd #(TLog #(KB_PER_TCM), 8)) TCM_INDEX;//(KB*1024)/ bytes_per_tcm_word
 
-// size of the BRAM in TCM_Word(s). the addition of the extra term
-// is to prevent rounding down in case bytes_per_word is not a
-// power of two.
-Integer n_words_BRAM = ((bytes_per_TCM + bytes_per_tcm_word - 1) / bytes_per_tcm_word);
+// size of the BRAM in TCM_Word(s). Only handles powers of two.
+Integer n_words_BRAM = (bytes_per_TCM / bytes_per_tcm_word);
 
 endpackage
 

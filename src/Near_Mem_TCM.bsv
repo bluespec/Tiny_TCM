@@ -141,17 +141,10 @@ interface DTCM_IFC;
    interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
 `endif
 
-   // Inform core that DDR4 has been initialized and is ready to accept requests
-   method Action ma_ddr4_ready;
-
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
    method Fabric_Data mv_tohost_value;
 `endif
-
-   // Misc. status; 0 = running, no error
-   (* always_ready *)
-   method Bit #(8) mv_status;
 endinterface
 
 // ================================================================
@@ -169,14 +162,18 @@ module mkNear_Mem (Near_Mem_IFC);
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
 
    // ----------------
-   // The RAM (used by IMem_Port, DMem_Port and Fabric_Port)
+   // The RAM (used by IMem_Port, DMem_Port and Fabric_Port). We could go for a DP
+   // RAM when the BACK_DOOR is enabled. From a concurrency point-of-view the
+   // extra port is unnecssary as back-door access and regular accesses are
+   // mutually exclusive. The only reason to go with DPRAMs is if we can move the
+   // muxing between the two channels to hardened logic inside the BRAM cell.
 
 //`ifdef TCM_BACK_DOOR
 //   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
 //      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
 //`else
    BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
+      <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.mem", load_file_is_binary_BRAM);
 //`endif
 
    // ----------------
@@ -252,9 +249,6 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
       method Bool is_i32_not_i16 = True;
    endinterface
 
-   // Fabric side
-   interface imem_master = dummy_AXI4_Master_ifc;
-
    // ----------------
    // DMem
 
@@ -262,7 +256,7 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
    interface dmem = dmem_port.dmem;
 
    // Fabric side
-   interface mem_master = dmem_port.mem_master;
+   interface dmem_master = dmem_port.mem_master;
 
    // ----------------
    // XXX Fence.I, Fence -- all fences are nops, right?
@@ -288,10 +282,12 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
 `ifdef TCM_BACK_DOOR
    // ----------------
    // Back-door from fabric into Near_Mem
-   interface dma_server = dma_port.dma_server;
+   interface dmem_dma_server = dma_port.dma_server;
 `else
-   interface dma_server = dummy_AXI4_Slave_ifc;
+   interface dmem_dma_server = dummy_AXI4_Slave_ifc;
 `endif
+   // IMem DMA interface always stubbed out in tiny version of TCM
+   interface imem_dma_server = dummy_AXI4_Slave_ifc;
 
    // ----------------
    // For ISA tests: watch memory writes to <tohost> addr
@@ -302,14 +298,6 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
 
    method Fabric_Data mv_tohost_value = dmem_port.mv_tohost_value;
 `endif
-
-   // ----------------
-   // Indication that the DDR4 is ready to both AXI4 adapters
-   method Action ma_ddr4_ready = dmem_port.ma_ddr4_ready;
-
-   // Misc. status; 0 = running, no error. Since it reports only write errors,
-   // the imem_port will never report a non-zero status
-   method Bit #(8) mv_status = dmem_port.mv_status;
 
 endmodule: mkNear_Mem
 
@@ -688,22 +676,6 @@ module mkDTCM #(
    endmethod
 `endif
 
-`ifdef FABRIC_AXI4
-   method Action ma_ddr4_ready = fabric_adapter.ma_ddr4_ready;
-`endif
-
-`ifdef FABRIC_AHBL
-   method Action ma_ddr4_ready = noAction;
-`endif
-
-`ifdef FABRIC_AXI4
-   // Misc. status; 0 = running, no error
-   method Bit#(8) mv_status = fabric_adapter.mv_status;
-`endif
-`ifdef FABRIC_AHBL
-   // Misc. status; 0 = running, no error (unimplemented)
-   method Bit#(8) mv_status = 0;
-`endif
 endmodule
 
 // ================================================================

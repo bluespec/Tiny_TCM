@@ -17,10 +17,13 @@
 //  - As a TCM (Tightly-Coupled Memory)
 //        Fabric-side IMem Client is not used (all fabric traffic is data or I/O mem)
 
-// Macros
-// FABRIC_AXI4 : External fabric is AXI4
-// FABRIC_AHBL : External fabric is AHB-L. 
-// Both macros should not be defined.
+// Macros Supported:
+//    TCM_BACK_DOOR
+//    ISA_PRIV_S
+//    FABRIC_AXI4 or FABRIC_AHBL
+//    WATCH_TOHOST
+//    INCLUDE_DMEM_SLAVE
+//    SYNTHESIS
 
 package Near_Mem_IFC;
 
@@ -85,11 +88,15 @@ typedef Wd_User  Wd_User_Mem;
 
 `endif
 
-typedef AXI4_Master_IFC #(Wd_Id_Mem,
-			  Wd_Addr_Mem,
-			  Wd_Data_Mem,
-			  Wd_User_Mem)  Near_Mem_Fabric_IFC;
+typedef AXI4_Master_IFC #( Wd_Id_Mem
+                         , Wd_Addr_Mem
+                         , Wd_Data_Mem
+                         , Wd_User_Mem) Near_Mem_Fabric_IFC;
 
+typedef AXI4_Slave_IFC #(  Wd_Id_Dma
+                         , Wd_Addr_Dma
+                         , Wd_Data_Dma
+                         , Wd_User_Dma) Near_Mem_DMA_IFC;
 // ================================================================
 // IMem and DMem Interfaces
 interface IMem_IFC;
@@ -119,9 +126,6 @@ interface Near_Mem_IFC;
    // CPU side
    interface IMem_IFC  imem;
 
-   // Fabric side -- unused for TCMs (always a dummy AXI4 port for now)
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) imem_master;
-
    // ----------------
    // DMem
 
@@ -130,12 +134,12 @@ interface Near_Mem_IFC;
 
 `ifdef FABRIC_AXI4
    // Fabric side (MMIO initiator interface)
-   interface Near_Mem_Fabric_IFC mem_master;
+   interface Near_Mem_Fabric_IFC dmem_master;
 `endif
 
 `ifdef FABRIC_AHBL
    // Fabric side (MMIO initiator interface)
-   interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
+   interface AHBL_Master_IFC #(AHB_Wd_Data) dmem_master;
 `endif
 
    // ----------------------------------------------------------------
@@ -159,7 +163,8 @@ interface Near_Mem_IFC;
    // ----------------------------------------------------------------
    // AXI4 DMA target interface (for backdoor loading of TCMs)
  
-   interface AXI4_Slave_IFC #(Wd_Id_Dma, Wd_Addr_Dma, Wd_Data_Dma, Wd_User_Dma)  dma_server;
+   interface Near_Mem_DMA_IFC  imem_dma_server;
+   interface Near_Mem_DMA_IFC  dmem_dma_server;
 
    // ----------------------------------------------------------------
    // Misc. control and status

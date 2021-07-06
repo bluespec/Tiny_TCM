@@ -128,12 +128,14 @@ interface TCM_AXI4_Adapter_IFC;
    // ----------------------------------------------------------------
    // Misc. control and status
 
+`ifndef Near_Mem_TCM
    // Signal that DDR4 has been initialized and is ready to accept requests
    method Action ma_ddr4_ready;
 
    // Misc. status; 0 = running, no error
    (* always_ready *)
    method Bit #(8) mv_status;
+`endif
 
 
 endinterface
@@ -447,14 +449,13 @@ module mkTCM_AXI4_Adapter #(
    // Fabric master interface
    interface mem_master = master_xactor.axi_side;
 
-   // ----------------------------------------------------------------
-   // Misc. control and status
-
+`ifndef Near_Mem_TCM
    // Signal that DDR4 has been initialized and is ready to accept requests
    method Action ma_ddr4_ready = noAction;
 
    // Misc. status; 0 = running, no error
    method Bit #(8) mv_status = 0;
+`endif
 
 endmodule
 
