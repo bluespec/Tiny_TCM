@@ -172,9 +172,14 @@ module mkNear_Mem (Near_Mem_IFC);
 //   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
 //      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
 //`else
+//`endif
+`ifdef EVAL
+   BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
+      <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "/tmp/tcm.mem", load_file_is_binary_BRAM);
+`else
    BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
       <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.mem", load_file_is_binary_BRAM);
-//`endif
+`endif
 
    // ----------------
    // Connections into the RAM
