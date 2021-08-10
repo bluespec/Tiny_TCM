@@ -18,7 +18,6 @@
 //        Fabric-side IMem Client is not used (all fabric traffic is data or I/O mem)
 
 // Macros Supported:
-//    TCM_BACK_DOOR
 //    ISA_PRIV_S
 //    FABRIC_AXI4 or FABRIC_AHBL
 //    WATCH_TOHOST
@@ -54,9 +53,10 @@ import AHBL_Types       :: *;
 import AHBL_Defs        :: *;
 `endif
 
-`ifdef INCLUDE_DMEM_SLAVE
-import AXI4_Lite_Types  :: *;
+`ifdef INCLUDE_GDB_CONTROL
+import DM_CPU_Req_Rsp   :: *;
 `endif
+
 
 // ================================================================
 // Near-Mem parameters (statically defined)
@@ -142,13 +142,6 @@ interface Near_Mem_IFC;
    interface AHBL_Master_IFC #(AHB_Wd_Data) dmem_master;
 `endif
 
-   // ----------------------------------------------------------------
-   // Optional AXI4-Lite DMem slave interface
-
-`ifdef INCLUDE_DMEM_SLAVE
-   interface AXI4_Lite_Slave_IFC #(Wd_Addr, Wd_Data, Wd_User) dmem_slave;
-`endif
-
    // ----------------
    // Fences
 
@@ -160,11 +153,12 @@ interface Near_Mem_IFC;
    interface Server #(Token, Token) sfence_vma_server;
 `endif
 
+`ifdef INCLUDE_GDB_CONTROL
    // ----------------------------------------------------------------
-   // AXI4 DMA target interface (for backdoor loading of TCMs)
+   // AXI4 DMA target interface (for backdoor/debug access of TCMs)
  
-   interface Near_Mem_DMA_IFC  imem_dma_server;
-   interface Near_Mem_DMA_IFC  dmem_dma_server;
+   interface Server #(SB_Sys_Req, SB_Sys_Rsp) dma_server;
+`endif
 
    // ----------------------------------------------------------------
    // Misc. control and status
@@ -176,13 +170,6 @@ interface Near_Mem_IFC;
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
    method Fabric_Data mv_tohost_value;
 `endif
-
-   // Inform core that DDR4 has been initialized and is ready to accept requests
-   method Action ma_ddr4_ready;
-
-   // Misc. status; 0 = running, no error
-   (* always_ready *)
-   method Bit #(8) mv_status;
 
 endinterface
    

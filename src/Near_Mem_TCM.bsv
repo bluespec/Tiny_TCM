@@ -91,6 +91,11 @@ import AHBL_Defs        :: *;
 import TCM_AHBL_Adapter :: *;
 `endif
 
+`ifdef INCLUDE_GDB_CONTROL
+import DM_Common        :: *;
+import DM_CPU_Req_Rsp   :: *;
+`endif
+
 import SoC_Map          :: *;
 
 // ================================================================
@@ -160,34 +165,28 @@ module mkNear_Mem (Near_Mem_IFC);
    Bit #(2) verbosity = 0;
 
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
+`ifdef INCLUDE_GDB_CONTROL
+   FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
+`endif
 
    // ----------------
    // The RAM (used by IMem_Port, DMem_Port and Fabric_Port). We could go for a DP
    // RAM when the BACK_DOOR is enabled. From a concurrency point-of-view the
-   // extra port is unnecssary as back-door access and regular accesses are
+   // extra port is not necessary as back-door access and regular accesses are
    // mutually exclusive. The only reason to go with DPRAMs is if we can move the
    // muxing between the two channels to hardened logic inside the BRAM cell.
 
-//`ifdef TCM_BACK_DOOR
-//   BRAM_DUAL_PORT_BE #(Addr, TCM_Word, Bytes_per_TCM_Word) ram
-//      <- mkBRAMCore2BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.hex", load_file_is_binary_BRAM);
-//`else
-//`endif
-`ifdef EVAL
-   BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "/tmp/tcm.mem", load_file_is_binary_BRAM);
-`else
-   BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram
-      <- mkBRAMCore1BELoad (n_words_BRAM, config_output_register_BRAM, "tcm.mem", load_file_is_binary_BRAM);
-`endif
+   BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) ram <-
+      mkBRAMCore1BELoad (
+           n_words_BRAM
+         , config_output_register_BRAM
+         , "/tmp/tcm.mem"
+         , load_file_is_binary_BRAM);
 
    // ----------------
    // Connections into the RAM
 
-let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
-`ifdef TCM_BACK_DOOR
-   let dma_port  <- mkTCM_DMA_AXI4_Adapter (ram, verbosity); // Uses port B only, at lower priority
-`endif
+   let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
 
    // Fence request/response queues
    FIFOF #(Token) f_fence_req_rsp <- mkFIFOF1;
@@ -201,10 +200,6 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
       interface Put request;
          method Action put (Token t);
             dmem_port.reset;
-`ifdef TCM_BACK_DOOR
-            dma_port.reset;
-`endif
-
             f_reset_rsps.enq (?);
          endmethod
       endinterface
@@ -284,15 +279,52 @@ let dmem_port <- mkDTCM   (ram, verbosity); // Uses port A only
    endmethod
 `endif
 
-`ifdef TCM_BACK_DOOR
+`ifdef INCLUDE_GDB_CONTROL
    // ----------------
-   // Back-door from fabric into Near_Mem
-   interface dmem_dma_server = dma_port.dma_server;
-`else
-   interface dmem_dma_server = dummy_AXI4_Slave_ifc;
+   // Back-door from DM/System into Near_Mem
+   interface Server dma_server;
+      interface Put request;
+         method Action put (SB_Sys_Req req);
+            dmem_port.dmem.req (
+                 (req.read_not_write ? CACHE_LD : CACHE_ST)
+               , fn_sbaccess_to_f3 (req.size)
+               , truncate (req.addr)
+               , truncate (req.wdata)
+   `ifdef ISA_A
+               , amo_funct7   : ?
+   `endif
+   `ifdef ISA_S
+               , priv         : req.priv
+               , sstatus_SUM  : req.sstatus_SUM
+               , mstatus_MXR  : req.mstatus_MXR
+               , satp         : req.satp
+   `endif
+            );
+            // Record read or write for the response path
+            f_sb_read_not_write.enq (req.read_not_write);
+         endmethod
+      endinterface
+      interface Get response;
+         method ActionValue #(SB_Sys_Rsp) get;
+            let rsp_rdata <- dmem_port.dmem.word32.get ();
+            let rsp_exc_code <- dmem_port.dmem.exc_code.get();
+            let rsp_exc <- dmem_port.dmem.exc.get ();
+
+            // Drop the store value if this was a write
+            let read_not_write <- pop (f_sb_read_not_write);
+            if (!read_not_write) dmem_port.dmem.final_st_val.get ();
+
+            // Compose the response packet
+            let rsp = SB_Sys_Rsp {
+                 rdata           : rsp_rdata
+               , read_not_write  : read_not_write
+               , err             : rsp_exc
+            };
+            return (rsp);
+         endmethod
+      endinterface
+   endinterface
 `endif
-   // IMem DMA interface always stubbed out in tiny version of TCM
-   interface imem_dma_server = dummy_AXI4_Slave_ifc;
 
    // ----------------
    // For ISA tests: watch memory writes to <tohost> addr
