@@ -91,6 +91,12 @@ import AHBL_Defs        :: *;
 import TCM_AHBL_Adapter :: *;
 `endif
 
+`ifdef FABRIC_APB
+import APB_Types        :: *;
+import APB_Defs         :: *;
+import TCM_APB_Adapter  :: *;
+`endif
+
 `ifdef INCLUDE_GDB_CONTROL
 import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
@@ -144,6 +150,9 @@ interface DTCM_IFC;
 `endif
 `ifdef FABRIC_AHBL
    interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
+`endif
+`ifdef FABRIC_APB
+   interface APB_Initiator_IFC #(APB_Wd_Data) mem_master;
 `endif
 
 `ifdef WATCH_TOHOST
@@ -378,10 +387,19 @@ module mkDTCM #(
    FIFOF #(Exc_Code)  f_rsp_exc_code      <- mkBypassFIFOF;
    FIFOF #(Bool)      f_rsp_exc           <- mkBypassFIFOF;
 
-   // FIFOs to interact with external fabric (MMIO <-> AHB/AXI)
-   FIFOF #(Single_Req)        f_mem_req         <- mkFIFOF1;
-   FIFOF #(Bit #(32))         f_mem_wdata       <- mkFIFOF1;
-   FIFOF #(Read_Data)         f_mem_rdata       <- mkFIFOF1;
+`ifdef FABRIC_APB
+   // The request and write data FIFOs need explicit EMPTY checking on the DEQ
+   // side. This allows us to directly drive the APB signals from these FIFOs
+   // removing the need for extra registers in the adapter
+   FIFOF #(Single_Req)        f_mem_req   <- mkGFIFOF1 (False, True);
+   FIFOF #(Bit #(32))         f_mem_wdata <- mkGFIFOF1 (False, True);
+   FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
+`else
+   // FIFOs to interact with external fabric (MMIO <-> AHB/AXI/APB)
+   FIFOF #(Single_Req)        f_mem_req   <- mkFIFOF1;
+   FIFOF #(Bit #(32))         f_mem_wdata <- mkFIFOF1;
+   FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
+`endif
 
 `ifndef SYNTHESIS
 `ifdef WATCH_TOHOST
@@ -406,11 +424,15 @@ module mkDTCM #(
                                                 , verbosity_mmio);
 
 `ifdef FABRIC_AXI4
-   TCM_AXI4_Adapter_IFC fabric_adapter<- mkTCM_AXI4_Adapter (
+   TCM_AXI4_Adapter_IFC fabric_adapter <- mkTCM_AXI4_Adapter (
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 `ifdef FABRIC_AHBL
-   TCM_AHBL_Adapter_IFC fabric_adapter<- mkTCM_AHBL_Adapter (
+   TCM_AHBL_Adapter_IFC fabric_adapter <- mkTCM_AHBL_Adapter (
+      verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
+`endif
+`ifdef FABRIC_APB
+   APB_Adapter_IFC fabric_adapter <- mk_APB_Adapter (
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 
