@@ -19,9 +19,8 @@
 
 // Macros Supported:
 //    ISA_PRIV_S
-//    FABRIC_AXI4 or FABRIC_AHBL
+//    FABRIC_AXI4 or FABRIC_AHBL or FABRIC_APB
 //    WATCH_TOHOST
-//    INCLUDE_DMEM_SLAVE
 //    SYNTHESIS
 
 package Near_Mem_IFC;
@@ -51,6 +50,11 @@ import Fabric_Defs      :: *;
 `ifdef FABRIC_AHBL
 import AHBL_Types       :: *;
 import AHBL_Defs        :: *;
+`endif
+
+`ifdef FABRIC_APB
+import APB_Types        :: *;
+import APB_Defs         :: *;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -88,10 +92,20 @@ typedef Wd_User  Wd_User_Mem;
 
 `endif
 
+// Define the interface that the near-mem offers to the fabric based on the
+// fabric protocol (AXI4/AHBL/APB)
+`ifdef FABRIC_AXI4
 typedef AXI4_Master_IFC #( Wd_Id_Mem
                          , Wd_Addr_Mem
                          , Wd_Data_Mem
                          , Wd_User_Mem) Near_Mem_Fabric_IFC;
+`endif
+`ifdef FABRIC_AHBL
+typedef AHBL_Master_IFC #(AHB_Wd_Data) Near_Mem_Fabric_IFC;
+`endif
+`ifdef FABRIC_APB
+typedef APB_Initiator_IFC #(APB_Wd_Data) Near_Mem_Fabric_IFC;
+`endif
 
 typedef AXI4_Slave_IFC #(  Wd_Id_Dma
                          , Wd_Addr_Dma
@@ -132,15 +146,8 @@ interface Near_Mem_IFC;
    // CPU side
    interface DMem_IFC  dmem;
 
-`ifdef FABRIC_AXI4
    // Fabric side (MMIO initiator interface)
    interface Near_Mem_Fabric_IFC dmem_master;
-`endif
-
-`ifdef FABRIC_AHBL
-   // Fabric side (MMIO initiator interface)
-   interface AHBL_Master_IFC #(AHB_Wd_Data) dmem_master;
-`endif
 
    // ----------------
    // Fences

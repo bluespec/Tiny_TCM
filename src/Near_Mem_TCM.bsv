@@ -94,7 +94,7 @@ import TCM_AHBL_Adapter :: *;
 `ifdef FABRIC_APB
 import APB_Types        :: *;
 import APB_Defs         :: *;
-import TCM_APB_Adapter  :: *;
+import APB_Adapter      :: *;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -145,15 +145,7 @@ interface DTCM_IFC;
 
    // Fabric side
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
-`ifdef FABRIC_AXI4
    interface Near_Mem_Fabric_IFC mem_master;
-`endif
-`ifdef FABRIC_AHBL
-   interface AHBL_Master_IFC #(AHB_Wd_Data) mem_master;
-`endif
-`ifdef FABRIC_APB
-   interface APB_Initiator_IFC #(APB_Wd_Data) mem_master;
-`endif
 
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
@@ -299,15 +291,15 @@ module mkNear_Mem (Near_Mem_IFC);
                , fn_sbaccess_to_f3 (req.size)
                , truncate (req.addr)
                , truncate (req.wdata)
-   `ifdef ISA_A
+`ifdef ISA_A
                , amo_funct7   : ?
-   `endif
-   `ifdef ISA_S
+`endif
+`ifdef ISA_S
                , priv         : req.priv
                , sstatus_SUM  : req.sstatus_SUM
                , mstatus_MXR  : req.mstatus_MXR
                , satp         : req.satp
-   `endif
+`endif
             );
             // Record read or write for the response path
             f_sb_read_not_write.enq (req.read_not_write);
