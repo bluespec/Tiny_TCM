@@ -104,7 +104,7 @@ typedef AXI4_Master_IFC #( Wd_Id_Mem
 typedef AHBL_Master_IFC #(AHB_Wd_Data) Near_Mem_Fabric_IFC;
 `endif
 `ifdef FABRIC_APB
-typedef APB_Initiator_IFC #(APB_Wd_Data) Near_Mem_Fabric_IFC;
+typedef APB_Initiator_IFC Near_Mem_Fabric_IFC;
 `endif
 
 typedef AXI4_Slave_IFC #(  Wd_Id_Dma

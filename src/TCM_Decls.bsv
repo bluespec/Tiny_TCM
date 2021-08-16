@@ -9,7 +9,15 @@ import ISA_Decls     :: *;
 //
 // --- USER CONFIGURABLE
 typedef 32 TCM_XLEN;          // TCM Width
-`ifdef TCM_64K
+
+// TCM Sizing
+`ifdef TCM_16K
+typedef 16 KB_PER_TCM;
+`elsif TCM_24K
+typedef 24 KB_PER_TCM;
+`elsif TCM_32K
+typedef 32 KB_PER_TCM;
+`elsif TCM_64K
 typedef 64 KB_PER_TCM;
 `elsif TCM_128K
 typedef 128 KB_PER_TCM;
@@ -37,7 +45,7 @@ function  Byte_in_TCM_Word fn_addr_to_byte_in_tcm_word (Addr a);
    return a [addr_hi_byte_in_tcm_word : addr_lo_byte_in_tcm_word ];
 endfunction
 
-Integer kb_per_tcm =   valueOf (KB_PER_TCM);   // TCM Sizing:  64 KB
+Integer kb_per_tcm =   valueOf (KB_PER_TCM);   // TCM Sizing
 Integer bytes_per_TCM = kb_per_tcm * 'h400;
 
 // LSBs to address a byte in the TCMs

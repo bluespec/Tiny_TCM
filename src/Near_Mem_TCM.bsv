@@ -424,7 +424,7 @@ module mkDTCM #(
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 `ifdef FABRIC_APB
-   APB_Adapter_IFC fabric_adapter <- mk_APB_Adapter (
+   APB_Adapter_IFC fabric_adapter <- mkAPB_Adapter (
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 
