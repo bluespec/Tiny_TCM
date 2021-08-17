@@ -276,6 +276,7 @@ endfunction
 function Bit #(32) fv_from_byte_lanes (Bit #(64)  addr,
 				       Bit #(2)   size_code,
 				       Bit #(32)  data);
+   // Align incoming data to LSB
    Bit #(5)  shamt = { addr [1:0], 3'b0 };
    Bit #(32) data1 = (data >> shamt);
 
