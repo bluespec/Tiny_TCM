@@ -585,14 +585,15 @@ module mkDTCM #(
       // the outgoing response
       let word32 = ram_out;
 
-      // If the request involves a store, initiate the write
+      // If the request involves a store (and there is nothing wrong with the
+      // address), initiate the write.
       // In the case of RMWs, it will involve the current RAM output as well.
-      if (  (req.op == CACHE_ST)
+      if ((  (req.op == CACHE_ST)
 `ifdef ISA_A
-         || fv_is_AMO_SC (req)
-         || fv_is_AMO_RMW (req)
+          || fv_is_AMO_SC (req)
+          || fv_is_AMO_RMW (req)
 `endif
-         ) begin
+          ) && (!rg_exc)) begin
 `ifdef ISA_A
          match {.final_st_val, .lrsc_fail} <- fav_write_to_ram (req, ram_out);
          if (isValid (lrsc_fail)) word32 = extend (pack(lrsc_fail.Valid));
@@ -666,6 +667,16 @@ module mkDTCM #(
          };
          f_req.enq (nm_req);
 
+         // The read to the RAM is initiated here speculatively.
+         // This read is specualtive because we still don't know if the
+         // address is good and is indeed meant for the TCM. Since it is a
+         // read, there is no side-effect and can be safely initiated without
+         // waiting for all the results to come in about the address.
+         // If it is a CACHE_ST or AMO store, the actual write
+         // happens in the response phase or AMO phase
+         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         ram.put (0, word_addr, ?);
+
          // for all the checks relating to the soc-map
          Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (addr);
 
@@ -680,12 +691,6 @@ module mkDTCM #(
          else if (soc_map.m_is_tcm_addr (fabric_addr)) begin
             rg_exc            <= False;
             rg_rsp_from_mmio  <= False;
-
-            // The read to the RAM is initiated here. If it is a
-            // CACHE_ST or AMO store, the actual write happens in
-            // the response phase or AMO phase
-            TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
-            ram.put (0, word_addr, ?);
          end
 
          // non-TCM request (outside TCM addr range: could be memory or I/O on the fabric )
