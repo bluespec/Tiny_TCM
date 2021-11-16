@@ -137,8 +137,6 @@ endfunction
 // ================================================================
 // TCM interfaces
 interface DTCM_IFC;
-   method Action  reset;
-
    // CPU side
    // interface Server #(Near_Mem_DReq, Near_Mem_DRsp)  dmem;
    interface DMem_IFC  dmem;
@@ -165,10 +163,11 @@ module mkNear_Mem (Near_Mem_IFC);
    //            3: + detail
    Bit #(2) verbosity = 0;
 
-   FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
-`ifdef INCLUDE_GDB_CONTROL
-   FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
-`endif
+   // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
+   // don't need this read-vs-write record any more as we got rid of final_st_val
+// `ifdef INCLUDE_GDB_CONTROL
+//    FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
+// `endif
 
    // ----------------
    // The RAM (used by IMem_Port, DMem_Port and Fabric_Port). We could go for a DP
@@ -197,6 +196,7 @@ module mkNear_Mem (Near_Mem_IFC);
 
    // ----------------
    // Reset
+   /*
    interface Server server_reset;
       interface Put request;
          method Action put (Token t);
@@ -206,7 +206,7 @@ module mkNear_Mem (Near_Mem_IFC);
       endinterface
 
       interface Get response = toGet (f_reset_rsps);
-   endinterface
+   endinterface*/
 
    // ----------------
    // IMem
@@ -302,7 +302,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
             );
             // Record read or write for the response path
-            f_sb_read_not_write.enq (req.read_not_write);
+            // f_sb_read_not_write.enq (req.read_not_write);
          endmethod
       endinterface
       interface Get response;
@@ -312,8 +312,8 @@ module mkNear_Mem (Near_Mem_IFC);
             let rsp_exc <- dmem_port.dmem.exc.get ();
 
             // Drop the store value if this was a write
-            let read_not_write <- pop (f_sb_read_not_write);
-            if (!read_not_write) dmem_port.dmem.final_st_val.get ();
+            // let read_not_write <- pop (f_sb_read_not_write);
+            // if (!read_not_write) dmem_port.dmem.final_st_val.get ();
 
             // Compose the response packet
             let rsp = SB_Sys_Rsp {
@@ -371,11 +371,13 @@ module mkDTCM #(
 
    // Current request from the CPU
    FIFOF #(MMU_Cache_Req) f_req    <- mkPipelineFIFOF;
-   // FIFOF #(MMU_Cache_Req) f_req    <- mkFIFOF1;
+   // FIFOF #(MMU_Cache_Req) f_req    <- mkFIFOF;
 
    // Response to the CPU
    FIFOF #(Bit #(32)) f_rsp_word32        <- mkBypassFIFOF;
+`ifdef ISA_A
    FIFOF #(Bit #(32)) f_rsp_final_st_val  <- mkBypassFIFOF;
+`endif
    FIFOF #(Exc_Code)  f_rsp_exc_code      <- mkBypassFIFOF;
    FIFOF #(Bool)      f_rsp_exc           <- mkBypassFIFOF;
 
@@ -407,12 +409,15 @@ module mkDTCM #(
    // Access to fabric for non-TCM requests
    DMMIO_IFC        mmio            <- mkDMMIO (  f_req
                                                 , f_rsp_word32
+`ifdef ISA_A
                                                 , f_rsp_final_st_val
+`endif
                                                 , f_rsp_exc_code
                                                 , f_rsp_exc
                                                 , f_mem_req
                                                 , f_mem_wdata
                                                 , f_mem_rdata
+                                                , rg_rsp_from_mmio
                                                 , verbosity_mmio);
 
 `ifdef FABRIC_AXI4
@@ -568,11 +573,11 @@ module mkDTCM #(
       endactionvalue
    endfunction 
    
-   (* mutually_exclusive = "mmio_rl_read_rsp, rl_tcm_rsp" *)
-   (* mutually_exclusive = "mmio_rl_write_req, rl_tcm_rsp" *)
-`ifdef ISA_A
-   (* mutually_exclusive = "imem_rl_rl_AMO_SC, rl_tcm_rsp" *)
-`endif
+// (* mutually_exclusive = "mmio_rl_read_rsp, rl_tcm_rsp" *)
+// (* mutually_exclusive = "mmio_rl_write_req, rl_tcm_rsp" *)
+//`ifdef ISA_A
+//   (* mutually_exclusive = "imem_rl_rl_AMO_SC, rl_tcm_rsp" *)
+//`endif
    // Drive response from TCM -- loads, LR, exceptions
    rule rl_tcm_rsp (!rg_rsp_from_mmio);
       // the incoming request
@@ -597,10 +602,10 @@ module mkDTCM #(
 `ifdef ISA_A
          match {.final_st_val, .lrsc_fail} <- fav_write_to_ram (req, ram_out);
          if (isValid (lrsc_fail)) word32 = extend (pack(lrsc_fail.Valid));
+         f_rsp_final_st_val.enq (final_st_val);
 `else
          let final_st_val <- fav_write_to_ram (req, ram_out);
 `endif
-         f_rsp_final_st_val.enq (final_st_val);
       end
 
 `ifdef ISA_A
@@ -623,14 +628,6 @@ module mkDTCM #(
 
    // ----------------------------------------------------------------
    // INTERFACE
-
-   method Action reset ();
-      rg_rsp_from_mmio <= False;
-      rg_exc <= False;
-
-      if (verbosity > 1)
-         $display ("%0d: %m.reset", cur_cycle);
-   endmethod
 
    // CPU side
    interface DMem_IFC dmem;
@@ -704,7 +701,9 @@ module mkDTCM #(
 
       // CPU interface: response
       interface Get  word32 = toGet (f_rsp_word32);
+`ifdef ISA_A
       interface Get  final_st_val = toGet (f_rsp_final_st_val);
+`endif
       interface Get  exc_code = toGet (f_rsp_exc_code);
       interface Get  exc = toGet (f_rsp_exc);
    endinterface

@@ -125,14 +125,16 @@ endinterface
 interface DMem_IFC;
    method Action req (CacheOp op, Bit#(3) f3, WordXL addr, Bit#(32) store_value);
    interface Get #(Bit #(32)) word32;
+`ifdef ISA_A
    interface Get #(Bit #(32)) final_st_val;
+`endif
    interface Get #(Exc_Code)  exc_code;
    interface Get #(Bool)      exc;
 endinterface
 
 interface Near_Mem_IFC;
    // Reset
-   interface Server #(Token, Token) server_reset;
+   // interface Server #(Token, Token) server_reset;
 
    // ----------------
    // IMem
