@@ -65,13 +65,16 @@ deriving (Bits, Eq, FShow);
 module mkDMMIO #(
      FIFOF #(MMU_Cache_Req)   f_req
    , FIFOF #(Bit #(32))       f_rsp_word32
+`ifdef ISA_A
    , FIFOF #(Bit #(32))       f_rsp_final_st_val
+`endif
    , FIFOF #(Exc_Code)        f_rsp_exc_code
    , FIFOF #(Bool)            f_rsp_exc
    , FIFOF #(Single_Req)      f_mem_reqs
    , FIFOF #(Bit #(32))       f_mem_wdata
    , FIFOF #(Read_Data)       f_mem_rdata
-   , Bit#(2) verbosity
+   , Bool                     rsp_from_mmio
+   , Bit#(2)                  verbosity
 ) (DMMIO_IFC);
    
    Reg #(FSM_State) rg_fsm_state <- mkReg (FSM_IDLE);
@@ -121,7 +124,7 @@ module mkDMMIO #(
    // Receive read response from mem for Load, LR and AMO Read-Modify-Write
    // (all ops other than store and SC)
 
-   rule rl_read_rsp (rg_fsm_state == FSM_READ_RSP);
+   rule rl_read_rsp ((rg_fsm_state == FSM_READ_RSP) && rsp_from_mmio);
       let read_data <- pop (f_mem_rdata);
 
       if (verbosity >= 1) begin
@@ -185,7 +188,11 @@ module mkDMMIO #(
    // ----------------------------------------------------------------
    // Store requests
 
-   rule rl_write_req ((rg_fsm_state == FSM_START) && (req.op == CACHE_ST));
+   rule rl_write_req (
+         (rg_fsm_state == FSM_START)
+      && (req.op == CACHE_ST)
+      && rsp_from_mmio);
+
       if (verbosity >= 2)
 	 $display ("%0d: %m.rl_write_req; f3 %0h  vaddr %0h  paddr %0h  word64 %0h",
 		   cur_cycle, req.f3, req.va, req_pa, req.st_value);
@@ -194,14 +201,12 @@ module mkDMMIO #(
 
       fa_mem_single_write (data);
 
-      // rg_final_st_val <= req.st_value;
       rg_fsm_state    <= FSM_IDLE;
 
       // the outgoing response
       f_rsp_word32.enq (req.st_value);    // dummy
       f_rsp_exc.enq (False);
       f_rsp_exc_code.enq (fv_exc_code_access_fault (req));
-      f_rsp_final_st_val.enq (req.st_value);
       f_req.deq;
    endrule
 
@@ -209,7 +214,7 @@ module mkDMMIO #(
    // ----------------------------------------------------------------
    // Memory-mapped I/O AMO_SC requests. Always fail (and never do the write)
 
-   rule rl_AMO_SC ((rg_fsm_state == FSM_START) && fv_is_AMO_SC (req));
+   rule rl_AMO_SC ((rg_fsm_state == FSM_START) && fv_is_AMO_SC (req) && rsp_from_mmio);
 
       // rg_ld_val    <= 1;    // 1 is LR/SC failure value
       rg_fsm_state <= FSM_IDLE;
@@ -217,7 +222,7 @@ module mkDMMIO #(
       // the outgoing response
       f_rsp_exc.enq (False);
       f_rsp_exc_code.enq (fv_exc_code_access_fault (req));
-      f_rsp_word64.enq (1);
+      f_rsp_word32.enq (1);
 
       f_req.deq;
 
