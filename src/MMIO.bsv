@@ -68,8 +68,7 @@ module mkDMMIO #(
 `ifdef ISA_A
    , FIFOF #(Bit #(32))       f_rsp_final_st_val
 `endif
-   , FIFOF #(Exc_Code)        f_rsp_exc_code
-   , FIFOF #(Bool)            f_rsp_exc
+   , FIFOF #(Maybe #(Exc_Code)) f_rsp_exc
    , FIFOF #(Single_Req)      f_mem_reqs
    , FIFOF #(Bit #(32))       f_mem_wdata
    , FIFOF #(Read_Data)       f_mem_rdata
@@ -133,8 +132,7 @@ module mkDMMIO #(
       end
 
       // the outgoing response fields
-      Bool rsp_exc      = False;
-      let  rsp_exc_code = fv_exc_code_access_fault (req);
+      Maybe #(Exc_Code) rsp_exc = tagged Invalid;
       Bit #(32) rsp_word = ?;
 
       // Bus error
@@ -142,7 +140,7 @@ module mkDMMIO #(
 	 if (verbosity >= 1)
 	    $display ("    MEM_RSP_ERR");
 
-         rsp_exc       = True;
+         rsp_exc       = tagged Valid fv_exc_code_access_fault (req);
       end
 
       // Successful read
@@ -181,7 +179,6 @@ module mkDMMIO #(
       rg_fsm_state    <= FSM_IDLE;
       f_rsp_word32.enq (rsp_word);
       f_rsp_exc.enq (rsp_exc);
-      f_rsp_exc_code.enq (rsp_exc_code);
       f_req.deq;
    endrule
 
@@ -205,8 +202,7 @@ module mkDMMIO #(
 
       // the outgoing response
       f_rsp_word32.enq (req.st_value);    // dummy
-      f_rsp_exc.enq (False);
-      f_rsp_exc_code.enq (fv_exc_code_access_fault (req));
+      f_rsp_exc.enq (tagged Invalid);
       f_req.deq;
    endrule
 
@@ -220,8 +216,7 @@ module mkDMMIO #(
       rg_fsm_state <= FSM_IDLE;
 
       // the outgoing response
-      f_rsp_exc.enq (False);
-      f_rsp_exc_code.enq (fv_exc_code_access_fault (req));
+      f_rsp_exc.enq (tagged Invalid);
       f_rsp_word32.enq (1);
 
       f_req.deq;

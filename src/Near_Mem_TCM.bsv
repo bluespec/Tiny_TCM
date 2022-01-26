@@ -233,21 +233,21 @@ module mkNear_Mem (Near_Mem_IFC);
       endmethod
 
       // CPU interface: response
-      interface Get exc = dmem_port.dmem.exc;
+      interface Get exc;
+         method ActionValue#(Maybe #(Exc_Code)) get;
+            let dmem_rsp_exc <- dmem_port.dmem.exc.get();
+            if (isValid (dmem_rsp_exc))
+               return (tagged Valid exc_code_INSTR_ADDR_MISALIGNED);
+            else
+               return (dmem_rsp_exc);
+         endmethod
+      endinterface
       interface Get instr;
          method ActionValue#(Instr) get;
             let dmem_rsp_word32 <- dmem_port.dmem.word32.get();
             return (dmem_rsp_word32);
          endmethod
       endinterface
-      interface Get exc_code;
-         method ActionValue#(Exc_Code) get;
-            let dmem_rsp_exc_code <- dmem_port.dmem.exc_code.get();
-            return (exc_code_INSTR_ADDR_MISALIGNED);
-         endmethod
-      endinterface
-        
-      method Bool is_i32_not_i16 = True;
    endinterface
 
    // ----------------
@@ -308,7 +308,6 @@ module mkNear_Mem (Near_Mem_IFC);
       interface Get response;
          method ActionValue #(SB_Sys_Rsp) get;
             let rsp_rdata <- dmem_port.dmem.word32.get ();
-            let rsp_exc_code <- dmem_port.dmem.exc_code.get();
             let rsp_exc <- dmem_port.dmem.exc.get ();
 
             // Drop the store value if this was a write
@@ -319,7 +318,7 @@ module mkNear_Mem (Near_Mem_IFC);
             let rsp = SB_Sys_Rsp {
                  rdata           : rsp_rdata
                , read_not_write  : read_not_write
-               , err             : rsp_exc
+               , err             : isValid (rsp_exc)
             };
             return (rsp);
          endmethod
@@ -356,7 +355,7 @@ module mkDTCM #(
 
    // Module state
    Reg #(Bool)                rg_rsp_from_mmio  <- mkReg (False);
-   Reg #(Bool)                rg_exc            <- mkReg (False);
+   Reg #(Maybe #(Exc_Code))   rg_exc            <- mkReg (tagged Invalid);
 
    SoC_Map_IFC soc_map <- mkSoC_Map;
 
@@ -378,8 +377,7 @@ module mkDTCM #(
 `ifdef ISA_A
    FIFOF #(Bit #(32)) f_rsp_final_st_val  <- mkBypassFIFOF;
 `endif
-   FIFOF #(Exc_Code)  f_rsp_exc_code      <- mkBypassFIFOF;
-   FIFOF #(Bool)      f_rsp_exc           <- mkBypassFIFOF;
+   FIFOF #(Maybe #(Exc_Code))  f_rsp_exc  <- mkBypassFIFOF;
 
 `ifdef FABRIC_APB
    // The request and write data FIFOs need explicit EMPTY checking on the DEQ
@@ -412,7 +410,6 @@ module mkDTCM #(
 `ifdef ISA_A
                                                 , f_rsp_final_st_val
 `endif
-                                                , f_rsp_exc_code
                                                 , f_rsp_exc
                                                 , f_mem_req
                                                 , f_mem_wdata
@@ -598,7 +595,7 @@ module mkDTCM #(
           || fv_is_AMO_SC (req)
           || fv_is_AMO_RMW (req)
 `endif
-          ) && (!rg_exc)) begin
+          ) && (!isValid(rg_exc))) begin
 `ifdef ISA_A
          match {.final_st_val, .lrsc_fail} <- fav_write_to_ram (req, ram_out);
          if (isValid (lrsc_fail)) word32 = extend (pack(lrsc_fail.Valid));
@@ -619,7 +616,6 @@ module mkDTCM #(
 `endif
 
       f_rsp_word32.enq (word32);
-      f_rsp_exc_code.enq (fv_exc_code_misaligned (req));
       f_rsp_exc.enq (rg_exc);
       if (verbosity >= 1)
          $display ("%0d: %m.rl_tcm_rsp: (va %08h) (word32 %016h)"
@@ -680,19 +676,19 @@ module mkDTCM #(
          // Check if f3 is legal, and if f3 and addr are compatible
          if (! fn_is_aligned (f3 [1:0], addr)) begin
             // Misaligned accesses not supported
-            rg_exc            <= True;
+            rg_exc            <= tagged Valid (fv_exc_code_misaligned (nm_req));
             rg_rsp_from_mmio  <= False;
          end
 
          // TCM reqs
          else if (soc_map.m_is_tcm_addr (fabric_addr)) begin
-            rg_exc            <= False;
+            rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= False;
          end
 
          // non-TCM request (outside TCM addr range: could be memory or I/O on the fabric )
          else begin
-            rg_exc            <= False;
+            rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= True;
             mmio.start;
          end
@@ -704,7 +700,6 @@ module mkDTCM #(
 `ifdef ISA_A
       interface Get  final_st_val = toGet (f_rsp_final_st_val);
 `endif
-      interface Get  exc_code = toGet (f_rsp_exc_code);
       interface Get  exc = toGet (f_rsp_exc);
    endinterface
 

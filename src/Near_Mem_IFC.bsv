@@ -116,26 +116,19 @@ typedef AXI4_Slave_IFC #(  Wd_Id_Dma
 interface IMem_IFC;
    method Action req (Bit#(3) f3, WordXL addr);
    interface Get #(Instr) instr;
-   interface Get #(Bool)  exc;
-   interface Get #(Exc_Code) exc_code;
-   (* always_ready *)
-   method Bool is_i32_not_i16;
+   interface Get #(Maybe #(Exc_Code)) exc;
 endinterface
 
 interface DMem_IFC;
    method Action req (CacheOp op, Bit#(3) f3, WordXL addr, Bit#(32) store_value);
-   interface Get #(Bit #(32)) word32;
+   interface Get #(Bit #(32))          word32;
 `ifdef ISA_A
-   interface Get #(Bit #(32)) final_st_val;
+   interface Get #(Bit #(32))          final_st_val;
 `endif
-   interface Get #(Exc_Code)  exc_code;
-   interface Get #(Bool)      exc;
+   interface Get #(Maybe #(Exc_Code))  exc;
 endinterface
 
 interface Near_Mem_IFC;
-   // Reset
-   // interface Server #(Token, Token) server_reset;
-
    // ----------------
    // IMem
 
