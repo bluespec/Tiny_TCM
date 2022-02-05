@@ -165,9 +165,9 @@ module mkNear_Mem (Near_Mem_IFC);
 
    // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    // don't need this read-vs-write record any more as we got rid of final_st_val
-// `ifdef INCLUDE_GDB_CONTROL
-//    FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
-// `endif
+   `ifdef INCLUDE_GDB_CONTROL
+      FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
+   `endif
 
    // ----------------
    // The RAM (used by IMem_Port, DMem_Port and Fabric_Port). We could go for a DP
@@ -302,7 +302,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
             );
             // Record read or write for the response path
-            // f_sb_read_not_write.enq (req.read_not_write);
+            f_sb_read_not_write.enq (req.read_not_write);
          endmethod
       endinterface
       interface Get response;
@@ -311,7 +311,7 @@ module mkNear_Mem (Near_Mem_IFC);
             let rsp_exc <- dmem_port.dmem.exc.get ();
 
             // Drop the store value if this was a write
-            // let read_not_write <- pop (f_sb_read_not_write);
+            let read_not_write <- pop (f_sb_read_not_write);
             // if (!read_not_write) dmem_port.dmem.final_st_val.get ();
 
             // Compose the response packet
@@ -398,8 +398,8 @@ module mkDTCM #(
    // See NOTE: "tohost" above.
    // "tohost" addr on which to monitor writes, for standard ISA tests.
    // These are set by the 'set_watch_tohost' method but are otherwise read-only.
-   Reg #(Bool)      rg_watch_tohost <- mkReg (False);
-   Reg #(Fabric_Addr) rg_tohost_addr  <- mkReg ('h_8000_1000);
+   Reg #(Bool)      rg_watch_tohost <- mkReg (True);
+   Reg #(Fabric_Addr) rg_tohost_addr  <- mkRegU;
    Reg #(Fabric_Data) rg_tohost_value <- mkReg (0);
 `endif
 `endif
