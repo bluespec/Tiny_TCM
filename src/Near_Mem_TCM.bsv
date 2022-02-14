@@ -369,15 +369,15 @@ module mkDTCM #(
 `endif
 
    // Current request from the CPU
-   FIFOF #(MMU_Cache_Req) f_req    <- mkPipelineFIFOF;
-   // FIFOF #(MMU_Cache_Req) f_req    <- mkFIFOF;
+   // FIFOF #(MMU_Cache_Req) f_req    <- mkPipelineFIFOF;
+   FIFOF #(MMU_Cache_Req) f_req    <- mkFIFOF;
 
    // Response to the CPU
-   FIFOF #(Bit #(32)) f_rsp_word32        <- mkBypassFIFOF;
+   FIFOF #(Bit #(32)) f_rsp_word32        <- mkFIFOF1;
 `ifdef ISA_A
-   FIFOF #(Bit #(32)) f_rsp_final_st_val  <- mkBypassFIFOF;
+   FIFOF #(Bit #(32)) f_rsp_final_st_val  <- mkFIFOF1;
 `endif
-   FIFOF #(Maybe #(Exc_Code))  f_rsp_exc  <- mkBypassFIFOF;
+   FIFOF #(Maybe #(Exc_Code))  f_rsp_exc  <- mkFIFOF1;
 
 `ifdef FABRIC_APB
    // The request and write data FIFOs need explicit EMPTY checking on the DEQ
