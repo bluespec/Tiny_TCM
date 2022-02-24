@@ -114,9 +114,8 @@ typedef AXI4_Slave_IFC #(  Wd_Id_Dma
 // ================================================================
 // IMem and DMem Interfaces
 interface IMem_IFC;
-   method Action req (Bit#(3) f3, WordXL addr);
-   interface Get #(Instr) instr;
-   interface Get #(Maybe #(Exc_Code)) exc;
+   method Action req (WordXL addr);
+   method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr;
 endinterface
 
 interface DMem_IFC;

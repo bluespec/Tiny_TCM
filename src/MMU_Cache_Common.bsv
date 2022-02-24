@@ -140,6 +140,10 @@ function Bool fn_is_aligned (Bit #(2) size_code, Bit #(n) addr);
 	   );
 endfunction
 
+function Bool fn_is_w_aligned (Bit #(n) addr);
+   return (addr [1:0] == 2'b00);
+endfunction
+
 // ================================================================
 // Convert width of an address from PA to Fabric_Addr
 
