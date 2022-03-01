@@ -146,10 +146,6 @@ interface Near_Mem_IFC;
    // ----------------
    // Fences
 
-   interface Server #(Token, Token) server_fence_i;
-
-   interface Server #(Fence_Ordering, Token) server_fence;
-
 `ifdef ISA_PRIV_S
    interface Server #(Token, Token) sfence_vma_server;
 `endif
@@ -174,12 +170,6 @@ interface Near_Mem_IFC;
 
 endinterface
    
-// IMem: Instruction TCM
-typedef struct {
-   Addr pc;
-   Bit #(3) f3;
-} IMem_Req deriving (Bits, Eq, FShow);
-
 `ifndef Near_Mem_TCM
 // ================================================================
 // Cache flush specs

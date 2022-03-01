@@ -59,14 +59,13 @@ import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
 `endif
 
-import SoC_Map          :: *;
+// import SoC_Map          :: *;
 
 // ================================================================
 // BRAM config constants
 
 Bool config_output_register_BRAM = False;    // i.e., no output register
 Bool load_file_is_binary_BRAM = False;       // file to be loaded is in hex format
-
 
 // ================================================================
 // TCM interfaces
@@ -99,7 +98,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    Reg #(Bool)                rg_rsp_from_mmio  <- mkReg (False);
    Reg #(Maybe #(Exc_Code))   rg_exc            <- mkReg (tagged Invalid);
 
-   SoC_Map_IFC soc_map <- mkSoC_Map;
+   // SoC_Map_IFC soc_map <- mkSoC_Map;
 
    // ----------------
    // The RAM (used by DMem_Port and Fabric_Port). We could go for a DP
@@ -110,20 +109,26 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 
    // The TCM RAM
 `ifdef MICROSEMI
-   BRAM_DUAL_PORT_BE #(  DTCM_INDEX
+// BRAM_DUAL_PORT_BE #(  TCM_INDEX
+   BRAM_PORT_BE #(  TCM_INDEX
                        , TCM_Word
-                       , Bytes_per_TCM_Word) dmem <- mkBRAMCore2BE (  n_words_DTCM
-                                                                    , config_output_register_BRAM
-                                                                    , "/tmp/dtcm.mem"
-                                                                    , load_file_is_binary_BRAM);
+//                     , Bytes_per_TCM_Word) mem  <- mkBRAMCore2BE (  n_words_BRAM
+                       , Bytes_per_TCM_Word) mem  <- mkBRAMCore1BE (  n_words_BRAM
+                                                                    , config_output_register_BRAM);
 `else
-   BRAM_DUAL_PORT_BE #(  DTCM_INDEX
+// BRAM_DUAL_PORT_BE #(  TCM_INDEX
+   BRAM_PORT_BE #(  TCM_INDEX
                        , TCM_Word
-                       , Bytes_per_TCM_Word) dmem <- mkBRAMCore2BELoad (  n_words_DTCM
+//                     , Bytes_per_TCM_Word) mem  <- mkBRAMCore2BELoad (  n_words_BRAM
+                       , Bytes_per_TCM_Word) mem  <- mkBRAMCore1BELoad (  n_words_BRAM
                                                                         , config_output_register_BRAM
                                                                         , "/tmp/dtcm.mem"
                                                                         , load_file_is_binary_BRAM);
 `endif
+
+   // The "front-door" to the dtcm (port A)
+   // let ram  = mem.a;
+   let ram  = mem;
 
    // ----------------
    // Reservation regs for AMO LR/SC (Load-Reserved/Store-Conditional)
@@ -447,7 +452,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          end
 
          // TCM reqs
-         else if (soc_map.m_is_dtcm_addr (fabric_addr)) begin
+         else if (fn_is_dtcm_addr (fabric_addr)) begin
             rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= False;
          end

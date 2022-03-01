@@ -140,18 +140,15 @@ module mkNear_Mem (Near_Mem_IFC);
 
    // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    // don't need this read-vs-write record any more as we got rid of final_st_val
-   `ifdef INCLUDE_GDB_CONTROL
+`ifdef INCLUDE_GDB_CONTROL
       FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
-   `endif
+`endif
 
    // ----------------
    // Connections into the RAM
 
    DTCM_IFC dtcm <- mkDTCM   (verbosity);
    ITCM_IFC itcm <- mkITCM   (verbosity);
-
-   // Fence request/response queues
-   FIFOF #(Token) f_fence_req_rsp <- mkFIFOF1;
 
    // ================================================================
    // INTERFACE
@@ -169,20 +166,7 @@ module mkNear_Mem (Near_Mem_IFC);
    interface dmem = dtcm.dmem;
 
    // Fabric side
-   interface dmem_master = dmem_port.mem_master;
-
-   // ----------------
-   // XXX Fence.I, Fence -- all fences are nops, right?
-   interface server_fence_i = fv_dummy_server_stub ();
-
-   interface Server server_fence;
-      interface Put request;
-         method Action put (Fence_Ordering fo);
-            f_fence_req_rsp.enq (?);
-         endmethod
-      endinterface
-      interface response = toGet (f_fence_req_rsp);
-   endinterface
+   interface dmem_master = dtcm.mem_master;
 
 `ifdef ISA_PRIV_S
    // ----------------
