@@ -142,6 +142,7 @@ module mkNear_Mem (Near_Mem_IFC);
    // don't need this read-vs-write record any more as we got rid of final_st_val
 `ifdef INCLUDE_GDB_CONTROL
       FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
+      FIFOF #(Bool) f_sb_imem_not_dmem  <- mkFIFOF1;
 `endif
 
    // ----------------
@@ -178,45 +179,67 @@ module mkNear_Mem (Near_Mem_IFC);
 
 `ifdef INCLUDE_GDB_CONTROL
    // ----------------
-   // XXX pending with the new disjointed TCM
    // Back-door from DM/System into Near_Mem
    interface Server dma_server;
       interface Put request;
          method Action put (SB_Sys_Req req);
-            dmem_port.dmem.req (
-                 (req.read_not_write ? CACHE_LD : CACHE_ST)
-               , fn_sbaccess_to_f3 (req.size)
-               , truncate (req.addr)
-               , truncate (req.wdata)
+            // for all the checks relating to the soc-map
+            Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
+            Bool imem_not_dmem = True;
+
+            if (fn_is_itcm_addr (fabric_addr))
+               itcm.backdoor.req (
+                    req.read_not_write
+                  , req.addr
+                  , req.wdata
+                  , fn_sbaccess_to_f3 (req.size)
+               );
+            else begin
+               dtcm.dmem.req (
+                    (req.read_not_write ? CACHE_LD : CACHE_ST)
+                  , fn_sbaccess_to_f3 (req.size)
+                  , truncate (req.addr)
+                  , truncate (req.wdata)
 `ifdef ISA_A
-               , amo_funct7   : ?
+                  , amo_funct7   : ?
 `endif
-`ifdef ISA_S
-               , priv         : req.priv
-               , sstatus_SUM  : req.sstatus_SUM
-               , mstatus_MXR  : req.mstatus_MXR
-               , satp         : req.satp
-`endif
-            );
+               );
+               imem_not_dmem = False;
+            end
             // Record read or write for the response path
             f_sb_read_not_write.enq (req.read_not_write);
+            f_sb_imem_not_dmem.enq (imem_not_dmem);
          endmethod
       endinterface
+
       interface Get response;
          method ActionValue #(SB_Sys_Rsp) get;
-            let rsp_rdata <- dmem_port.dmem.word32.get ();
-            let rsp_exc <- dmem_port.dmem.exc.get ();
-
-            // Drop the store value if this was a write
+            // Is it a read or a write?
             let read_not_write <- pop (f_sb_read_not_write);
-            // if (!read_not_write) dmem_port.dmem.final_st_val.get ();
 
-            // Compose the response packet
+            // Is the response expected from the IMem or DMem?
+            let imem_not_dmem <- pop (f_sb_imem_not_dmem);
+
+            // The response packet to the debug module
             let rsp = SB_Sys_Rsp {
-                 rdata           : rsp_rdata
+                 rdata           : ?
                , read_not_write  : read_not_write
-               , err             : isValid (rsp_exc)
+               , err             : False
             };
+
+            if (imem_not_dmem) begin
+               match {.rsp_imem, .err_imem} <- itcm.backdoor.rsp ();
+               rsp.rdata = rsp_imem;
+               rsp.err = err_imem;
+            end
+
+            else begin
+               let rsp_dmem <- dtcm.dmem.word32.get ();
+               let err_dmem <- dtcm.dmem.exc.get ();
+               rsp.rdata = rsp_dmem;
+               rsp.err = isValid (err_dmem);
+            end
+
             return (rsp);
          endmethod
       endinterface

@@ -118,6 +118,13 @@ interface IMem_IFC;
    method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr;
 endinterface
 
+`ifdef INCLUDE_GDB_CONTROL
+interface IMem_Dbg_IFC;
+   method Action req (Bool read, Bit #(32) addr, Bit #(32) wdata, Bit #(3) f3);
+   method ActionValue #(Tuple2 #(Instr, Bool)) rsp;
+endinterface
+`endif
+
 interface DMem_IFC;
    method Action req (CacheOp op, Bit#(3) f3, WordXL addr, Bit#(32) store_value);
    interface Get #(Bit #(32))          word32;
@@ -298,6 +305,38 @@ function Tuple2 #(Bit #(Bytes_per_TCM_Word), // byte-enable
 
    endcase
    return tuple2 (byte_en, out_word);
+endfunction
+
+function TCM_Word                  // adjusted word
+         fn_byte_adjust_rmw (Bit #(3) f3, Addr byte_addr, Bit#(32) word, TCM_Word orig);
+
+   TCM_Word out_word = orig;
+
+   Byte_in_TCM_Word addr_lsbs = byte_addr [(bits_per_byte_in_tcm_word-1):0];
+
+   case ({1'b0, f3 [1:0]})
+      // Bytes
+      f3_LB: case (addr_lsbs)
+         'h0: begin out_word [ 7: 0] = word [7:0]; end
+         'h1: begin out_word [15: 8] = word [7:0]; end
+         'h2: begin out_word [23:16] = word [7:0]; end
+         'h3: begin out_word [31:24] = word [7:0]; end
+      endcase
+
+      // Halfwords (16b)
+      f3_LH: case (addr_lsbs)
+         'h0: begin out_word [15: 0] = word [15:0]; end
+         'h2: begin out_word [31:16] = word [15:0]; end
+      endcase
+
+      // Words (32b)
+      f3_LW: begin out_word = word; end
+
+      // Doublewords (64b) -- XXX Unsupported
+      f3_LD: begin out_word = word; end
+
+   endcase
+   return out_word;
 endfunction
 
 // ================================================================
