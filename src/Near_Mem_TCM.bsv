@@ -250,10 +250,10 @@ module mkNear_Mem (Near_Mem_IFC);
    // For ISA tests: watch memory writes to <tohost> addr
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
-      dmem_port.set_watch_tohost (watch_tohost, tohost_addr);
+      dtcm.set_watch_tohost (watch_tohost, tohost_addr);
    endmethod
 
-   method Fabric_Data mv_tohost_value = dmem_port.mv_tohost_value;
+   method Fabric_Data mv_tohost_value = dtcm.mv_tohost_value;
 `endif
 
 endmodule: mkNear_Mem
