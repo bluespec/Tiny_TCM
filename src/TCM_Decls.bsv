@@ -12,7 +12,9 @@ import Fabric_Defs   :: *; // Only for type Fabric_Addr
 typedef 32 TCM_XLEN;          // TCM Width
 
 // TCM Sizing
-`ifdef TCM_16K
+`ifdef TCM_8K
+typedef 8 KB_PER_TCM;
+`elsif TCM_16K
 typedef 16 KB_PER_TCM;
 `elsif TCM_24K
 typedef 24 KB_PER_TCM;
