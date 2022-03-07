@@ -136,7 +136,7 @@ module mkNear_Mem (Near_Mem_IFC);
    //            1: Requests and responses
    //            2: rule firings
    //            3: + detail
-   Bit #(2) verbosity = 0;
+   Bit #(2) verbosity = 2;
 
    // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    // don't need this read-vs-write record any more as we got rid of final_st_val

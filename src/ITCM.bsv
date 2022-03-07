@@ -52,7 +52,8 @@ Bool config_output_register_BRAM = False; // no output register
 Bool load_file_is_binary_BRAM = False;    // load file is in hex format
 
 // ================================================================
-// Interface Definition
+// Interface and local type definition
+typedef enum { RST, RDY } ITCM_State deriving (Bits, Eq, FShow);
 
 interface ITCM_IFC;
    // CPU side
@@ -101,12 +102,13 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
                                                        , load_file_is_binary_BRAM);
 `endif
 
+   Reg #(ITCM_State) rg_state <- mkReg (RST);
    Reg #(Maybe #(Exc_Code)) rg_rsp_exc <- mkReg (tagged Invalid);
-   Reg #(Bool) rg_rsp_valid <- mkReg (False);
+   FIFOF #(Token) rg_rsp_valid <- mkFIFOF;
 `ifdef REG_I_OUT
    // to absorb the extra cycle of latency due to registered BRAM
    // output
-   Reg #(Bool) rg_rsp_valid_d <- mkReg (False);
+   FIFOF #(Token) rg_rsp_valid_d <- mkFIFOF;
 `endif
 `ifdef INCLUDE_GDB_CONTROL
    Reg #(Bool) rg_dbg_rsp_valid <- mkReg (False);
@@ -122,7 +124,13 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 `endif
 
-   // SoC_Map_IFC soc_map <- mkSoC_Map;
+   rule rl_reset (rg_state == RST);
+      rg_state <= RDY;
+      rg_rsp_valid.clear;
+`ifdef REG_I_OUT
+      rg_rsp_valid_d.clear;
+`endif
+   endrule
 
    // The "front-door" to the itcm (port A)
 `ifdef INCLUDE_GDB_CONTROL
@@ -136,15 +144,17 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `ifdef REG_I_OUT
    // When the BRAM output is registered, an extra cycle is needed for
    // response to be ready. This applies to both dbg and non-dbg reqs
-   rule rl_schedule_rsp (rg_rsp_valid);
-      rg_rsp_valid_d <= rg_rsp_valid;
-      rg_rsp_valid <= False;
+   rule rl_schedule_rsp;
+      rg_rsp_valid.deq;
+      rg_rsp_valid_d.enq (?);
    endrule
 
+`ifdef INCLUDE_GDB_CONTROL
    rule rl_schedule_dbg_rsp (rg_dbg_rsp_valid);
       rg_dbg_rsp_valid_d  <= rg_dbg_rsp_valid;
       rg_dbg_rsp_valid    <= False;
    endrule
+`endif
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -171,12 +181,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    interface IMem_IFC imem;
       // CPU interface: request
       // interface Put request;
-      method Action req (WordXL addr) 
-`ifdef REG_I_OUT
-         if ((!rg_rsp_valid) && (!rg_rsp_valid_d));
-`else
-         if  (!rg_rsp_valid);
-`endif
+      method Action req (WordXL addr) if ((rg_state == RDY));
          // This method is used by ifetches only and the cache-op
          // is assumed to be always read and the size always 32-bit
 
@@ -196,23 +201,43 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 
          // Report exceptions
          Maybe #(Exc_Code) exc;
-         if (!is_aligned)
+         if (!is_aligned) begin
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
-         else if (!(fn_is_itcm_addr (fabric_addr)))
+            $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
+         end
+         else if (!(fn_is_itcm_addr (fabric_addr))) begin
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
+            $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
+         end
          else exc = tagged Invalid;
 
          rg_rsp_exc   <= exc;
-         rg_rsp_valid <= True;
+         rg_rsp_valid.enq (?);
+
+         if (verbosity > 0) begin
+            $display ("%06d:[D]:%m.req", cur_cycle);
+            if (verbosity > 1) begin
+               $display ("           0x%08h", addr);
+            end
+         end
       endmethod
 
 `ifdef REG_I_OUT
-      method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr if (rg_rsp_valid_d);
-         rg_rsp_valid_d <= False;
+      method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr
+         if ((rg_state == RDY));
+         rg_rsp_valid_d.deq;
 `else
-      method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr if (rg_rsp_valid);
-         rg_rsp_valid <= False;
+      method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr
+         if ((rg_state == RDY));
+         rg_rsp_valid.deq;
 `endif
+         if (verbosity > 0) begin
+            $display ("%06d:[D]:%m.instr", cur_cycle);
+            if (verbosity > 1) begin
+               $display ("           (instr 0x%08h) (exc "
+                  , irom.read, fshow (rg_rsp_exc), ")");
+            end
+         end
          return (tuple2 (irom.read, rg_rsp_exc));
       endmethod
    endinterface

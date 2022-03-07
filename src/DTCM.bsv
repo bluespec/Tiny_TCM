@@ -231,8 +231,8 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          if (fv_is_AMO_SC (req)) begin
             if (rg_lrsc_valid && (rg_lrsc_pa == req.va)) begin
                if (verbosity >= 1) begin
-                  $display ("%0d: %m.fav_write_to_ram: SC success", cur_cycle);
-                  $display ("      (va %08h) (data %08h)", req.va, st_value);
+                  $display ("%6d:[D]:%m.fav_write_to_ram:SC success", cur_cycle);
+                  $display ("            (va 0x%08h) (data 0x%08h)", req.va, st_value);
                end
                // SC success: cancel LR/SC reservation
                rg_lrsc_valid <= False;
@@ -240,8 +240,8 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
             end
             else begin 
                if (verbosity >= 1) begin
-                  $display ("%0d: %m.fav_write_to_ram: SC fail", cur_cycle);
-                  $display ("      (va %08h) (data %08h)", req.va, st_value);
+                  $display ("%6d:[D]:%m.fav_write_to_ram:SC fail", cur_cycle);
+                  $display ("            (va 0x%08h) (data 0x%08h)", req.va, st_value);
                end
                lrsc_fail = tagged Valid True; // the response word should be 1
                sc_fail = True;
@@ -252,9 +252,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          else if (fv_is_AMO_RMW (req)) begin
             Fmt fmt_op = fshow_f5_AMO_op (req.amo_funct7 [6:2]);
             if (verbosity >= 1) begin
-               $display ("%0d: %m.fav_write_to_ram: AMO ", cur_cycle, fmt_op);
-               $display ("      (va %08h) (rs2_val %08h) (f3 %03b)", req.va, st_value, f3);
-               $display ("      (load-result %08h)", ram_data);
+               $display ("%6d:[D]:%m.fav_write_to_ram: AMO ", cur_cycle, fmt_op);
+               $display ("            (va 0x%08h) (rs2_val 0x%08h) (f3 %03b)", req.va, st_value, f3);
+               $display ("            (load-result 0x%08h)", ram_data);
             end
 
             let size_code  = f3 [1:0];
