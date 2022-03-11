@@ -102,8 +102,6 @@ import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
 `endif
 
-import SoC_Map          :: *;
-
 import ITCM             :: *;
 import DTCM             :: *;
 

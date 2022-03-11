@@ -61,39 +61,5 @@ typedef Bit #(TAdd #(TLog #(KB_PER_TCM), 8)) TCM_INDEX;//(KB*1024)/ bytes_per_tc
 // size of the BRAM in TCM_Word(s). Only handles powers of two.
 Integer n_words_BRAM = (bytes_per_TCM / bytes_per_tcm_word);
 
-   // ----------------------------------------------------------------
-   // Tightly-coupled memory address definitions
-   // When TCMs are enabled, the iTCM address base is at the address usually
-   // used for the mem0_controller. This avoids changing the start location
-   // of bare-metal programs.
-   //
-   // The "main" memory now starts from 0x1000_0000 later, effectively
-   // leaving 256 MB for the two TCMs
-   //
-   // Currently the TCMs are of the same size, controlled by a
-   // single tcm_addr_size value.
-   Fabric_Addr itcm_addr_base = 'h_C000_0000;
-   Fabric_Addr itcm_addr_size = fromInteger (bytes_per_TCM);
-   Fabric_Addr itcm_addr_lim  = itcm_addr_base + itcm_addr_size;
-
-   function Bool fn_is_itcm_addr (Fabric_Addr addr);
-      Bit #(TSub #(Wd_Addr, TCM_Addr_LSB)) tcm_base_msb = truncate (
-         itcm_addr_base >> tcm_addr_lsb); 
-      Bit #(TSub #(Wd_Addr, TCM_Addr_LSB)) addr_msb = truncate (
-         addr >> tcm_addr_lsb); 
-      return (tcm_base_msb == addr_msb);
-   endfunction
-
-   Fabric_Addr dtcm_addr_base = 'h_C800_0000;
-   Fabric_Addr dtcm_addr_size = fromInteger (bytes_per_TCM);
-   Fabric_Addr dtcm_addr_lim  = dtcm_addr_base + dtcm_addr_size;
-
-   function Bool fn_is_dtcm_addr (Fabric_Addr addr);
-      Bit #(TSub #(Wd_Addr, TCM_Addr_LSB)) tcm_base_msb = truncate (
-         dtcm_addr_base >> tcm_addr_lsb); 
-      Bit #(TSub #(Wd_Addr, TCM_Addr_LSB)) addr_msb = truncate (
-         addr >> tcm_addr_lsb); 
-      return (tcm_base_msb == addr_msb);
-   endfunction
 endpackage
 

@@ -40,7 +40,7 @@ import TCM_Decls        :: *;
 import Near_Mem_IFC     :: *;
 import MMU_Cache_Common :: *;
 import Fabric_Defs      :: *;
-// import SoC_Map          :: *;
+import Core_Map         :: *;
 
 // ================================================================
 // BRAM config constants
@@ -123,6 +123,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    Reg #(Bool) rg_dbg_rsp_valid_d <- mkReg (False);
 `endif
 `endif
+   Core_Map_IFC addr_map <- mkCore_Map;
 
    rule rl_reset (rg_state == RST);
       rg_state <= RDY;
@@ -205,7 +206,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
             $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
          end
-         else if (!(fn_is_itcm_addr (fabric_addr))) begin
+         else if (!(addr_map.m_is_itcm_addr (fabric_addr))) begin
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
             $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
          end

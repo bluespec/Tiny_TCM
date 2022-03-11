@@ -59,7 +59,7 @@ import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
 `endif
 
-// import SoC_Map          :: *;
+import Core_Map         :: *;
 
 // ================================================================
 // BRAM config constants
@@ -98,7 +98,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    Reg #(Bool)                rg_rsp_from_mmio  <- mkReg (False);
    Reg #(Maybe #(Exc_Code))   rg_exc            <- mkReg (tagged Invalid);
 
-   // SoC_Map_IFC soc_map <- mkSoC_Map;
+   Core_Map_IFC addr_map <- mkCore_Map;
 
    // ----------------
    // The RAM (used by DMem_Port and Fabric_Port). We could go for a DP
@@ -452,7 +452,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          end
 
          // TCM reqs
-         else if (fn_is_dtcm_addr (fabric_addr)) begin
+         else if (addr_map.m_is_dtcm_addr (fabric_addr)) begin
             rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= False;
          end
