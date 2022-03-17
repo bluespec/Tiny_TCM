@@ -100,6 +100,7 @@ import APB_Adapter      :: *;
 `ifdef INCLUDE_GDB_CONTROL
 import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
+import Core_Map         :: *;
 `endif
 
 import ITCM             :: *;
@@ -139,8 +140,9 @@ module mkNear_Mem (Near_Mem_IFC);
    // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    // don't need this read-vs-write record any more as we got rid of final_st_val
 `ifdef INCLUDE_GDB_CONTROL
-      FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
-      FIFOF #(Bool) f_sb_imem_not_dmem  <- mkFIFOF1;
+   FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
+   FIFOF #(Bool) f_sb_imem_not_dmem  <- mkFIFOF1;
+   Core_Map_IFC addr_map <- mkCore_Map;
 `endif
 
    // ----------------
@@ -185,7 +187,7 @@ module mkNear_Mem (Near_Mem_IFC);
             Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
             Bool imem_not_dmem = True;
 
-            if (fn_is_itcm_addr (fabric_addr))
+            if (addr_map.m_is_itcm_addr (fabric_addr))
                itcm.backdoor.req (
                     req.read_not_write
                   , req.addr
