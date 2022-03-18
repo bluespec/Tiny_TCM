@@ -39,7 +39,6 @@ import Semi_FIFOF       :: *;
 import ISA_Decls        :: *;
 import TCM_Decls        :: *;
 import MMU_Cache_Common :: *;
-import SoC_Map          :: *;
 
 import AXI4_Types       :: *;
 import Fabric_Defs      :: *;
