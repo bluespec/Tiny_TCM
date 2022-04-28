@@ -159,6 +159,9 @@ module mkNear_Mem (Near_Mem_IFC);
 
    // CPU side
    interface imem = itcm.imem;
+`ifdef TCM_LOADER
+   interface dma_server = itcm.loader;
+`endif
 
    // ----------------
    // DMem
@@ -180,7 +183,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    // ----------------
    // Back-door from DM/System into Near_Mem
-   interface Server dma_server;
+   interface Server dbg_server;
       interface Put request;
          method Action put (SB_Sys_Req req);
             // for all the checks relating to the soc-map

@@ -74,23 +74,12 @@ typedef Wd_Data   Wd_Data_Dma;
 typedef Wd_User   Wd_User_Dma;
 
 // ================================================================
-// This part of the interface is lifted out to surrounding modules.
-
-`ifdef MEM_512b
-
-typedef 16   Wd_Id_Mem;
-typedef 64   Wd_Addr_Mem;
-typedef 512  Wd_Data_Mem;
-typedef 0    Wd_User_Mem;
-
-`else
+// Fabric parameters for memory channel into the near-mem. 
 
 typedef Wd_Id    Wd_Id_Mem;
 typedef Wd_Addr  Wd_Addr_Mem;
 typedef Wd_Data  Wd_Data_Mem;
 typedef Wd_User  Wd_User_Mem;
-
-`endif
 
 // Define the interface that the near-mem offers to the fabric based on the
 // fabric protocol (AXI4/AHBL/APB)
@@ -107,10 +96,13 @@ typedef AHBL_Master_IFC #(AHB_Wd_Data) Near_Mem_Fabric_IFC;
 typedef APB_Initiator_IFC Near_Mem_Fabric_IFC;
 `endif
 
+
+// The interface type for loader access to the ITCM (always AXI4 for now)
 typedef AXI4_Slave_IFC #(  Wd_Id_Dma
                          , Wd_Addr_Dma
                          , Wd_Data_Dma
                          , Wd_User_Dma) Near_Mem_DMA_IFC;
+
 // ================================================================
 // IMem and DMem Interfaces
 interface IMem_IFC;
@@ -140,7 +132,9 @@ interface Near_Mem_IFC;
 
    // CPU side
    interface IMem_IFC  imem;
-
+`ifdef TCM_LOADER
+   interface Near_Mem_DMA_IFC dma_server;
+`endif
    // ----------------
    // DMem
 
@@ -161,7 +155,7 @@ interface Near_Mem_IFC;
    // ----------------------------------------------------------------
    // AXI4 DMA target interface (for backdoor/debug access of TCMs)
  
-   interface Server #(SB_Sys_Req, SB_Sys_Rsp) dma_server;
+   interface Server #(SB_Sys_Req, SB_Sys_Rsp) dbg_server;
 `endif
 
    // ----------------------------------------------------------------

@@ -41,6 +41,7 @@ import Near_Mem_IFC     :: *;
 import MMU_Cache_Common :: *;
 import Fabric_Defs      :: *;
 import Core_Map         :: *;
+import TCM_AXI4_Adapter :: *;
 
 // ================================================================
 // BRAM config constants
@@ -60,8 +61,13 @@ interface ITCM_IFC;
    interface IMem_IFC  imem;
 
 `ifdef INCLUDE_GDB_CONTROL
-   // DMA server interface for back-door access to the ITCM
+   // Server interface for back-door debug access to the ITCM
    interface IMem_Dbg_IFC backdoor;
+`endif
+
+`ifdef TCM_LOADER
+   // DMA server interface for loader access to the ITCM
+   interface Near_Mem_DMA_IFC loader;
 `endif
 endinterface
 
@@ -77,29 +83,52 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    //            3: + detail
 
 `ifdef MICROSEMI
+// Microsemi devices do not have BRAMs that can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
-   // The TCM RAM - dual-ported to allow backdoor to change IMem contents
+   // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT #(TCM_INDEX
                   , TCM_Word) mem  <- mkBRAMCore2 (  n_words_BRAM 
-`else
-   // The TCM RAM - single-ported
-   BRAM_PORT #(     TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore1 (  n_words_BRAM
-`endif
                                                    , config_output_register_BRAM);
 `else
+`ifdef TCM_LOADER
+   // The TCM RAM - dual-ported to allow backdoor loader access
+   BRAM_DUAL_PORT #(TCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2 (  n_words_BRAM 
+                                                   , config_output_register_BRAM);
+`else
+   // The TCM RAM - single-ported - no GDB, no loader
+   BRAM_PORT #(     TCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore1 (  n_words_BRAM
+                                                   , config_output_register_BRAM);
+`endif
+`endif
+
+`else
+// Xilinx device BRAMs can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
-   // The TCM RAM - dual-ported to allow backdoor to change IMem contents
+   // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT #(TCM_INDEX
                   , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
-`else
-   // The TCM RAM - single-ported with file loading
-   BRAM_PORT #(     TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore1Load (  n_words_BRAM
-`endif
                                                        , config_output_register_BRAM
                                                        , "/tmp/itcm.mem"
                                                        , load_file_is_binary_BRAM);
+`else
+`ifdef TCM_LOADER
+   // The TCM RAM - dual-ported to allow backdoor loader access
+   BRAM_DUAL_PORT #(TCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
+                                                       , config_output_register_BRAM
+                                                       , "/tmp/itcm.mem"
+                                                       , load_file_is_binary_BRAM);
+`else
+   // The TCM RAM - single-ported with file loading - no GDB, no loader
+   BRAM_PORT #(     TCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore1Load (  n_words_BRAM
+                                                       , config_output_register_BRAM
+                                                       , "/tmp/itcm.mem"
+                                                       , load_file_is_binary_BRAM);
+`endif
+`endif
 `endif
 
    Reg #(ITCM_State) rg_state <- mkReg (RST);
@@ -125,22 +154,36 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
    Core_Map_IFC addr_map <- mkCore_Map;
 
+`ifdef INCLUDE_GDB_CONTROL
+   // GDB defined
+   let irom = mem.a; 
+   let iram = mem.b;
+`else
+`ifdef TCM_LOADER
+   // GDB not defined, Loader is defined
+   let irom = mem.a; 
+   let iram = mem.b;
+`else
+   // GDB and Loader not defined
+   let irom = mem;
+`endif
+`endif
+
+`ifdef TCM_LOADER
+   Loader_AXI4_Adapter_IFC itcm_loader <- mkLoader_AXI4_Adapter (
+      iram, verbosity);
+`endif
+
    rule rl_reset (rg_state == RST);
       rg_state <= RDY;
       rg_rsp_valid.clear;
 `ifdef REG_I_OUT
       rg_rsp_valid_d.clear;
 `endif
-   endrule
-
-   // The "front-door" to the itcm (port A)
-`ifdef INCLUDE_GDB_CONTROL
-   let irom = mem.a;
-   let iram = mem.b;
-`else
-   let irom = mem;
+`ifdef TCM_LOADER
+      itcm_loader.reset;
 `endif
-
+   endrule
 
 `ifdef REG_I_OUT
    // When the BRAM output is registered, an extra cycle is needed for
@@ -206,7 +249,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
             $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
          end
-         else if (!(addr_map.m_is_itcm_addr (fabric_addr))) begin
+         else if (!(addr_map.m_is_itcm_addr_1 (fabric_addr))) begin
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
             $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
          end
@@ -216,9 +259,9 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          rg_rsp_valid.enq (?);
 
          if (verbosity > 0) begin
-            $display ("%06d:[D]:%m.req", cur_cycle);
+            $display ("%06d:[D]:%m.imem.req", cur_cycle);
             if (verbosity > 1) begin
-               $display ("           0x%08h", addr);
+               $display ("           (addr 0x%08h)", addr);
             end
          end
       endmethod
@@ -233,7 +276,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          rg_rsp_valid.deq;
 `endif
          if (verbosity > 0) begin
-            $display ("%06d:[D]:%m.instr", cur_cycle);
+            $display ("%06d:[D]:%m.imem.instr", cur_cycle);
             if (verbosity > 1) begin
                $display ("           (instr 0x%08h) (exc "
                   , irom.read, fshow (rg_rsp_exc), ")");
@@ -261,7 +304,8 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          iram.put (False, word_addr, ?);
 
          // Alignment check
-         rg_dbg_rsp_err   <= !fn_is_aligned (f3 [1:0], addr);
+         let is_aligned  = fn_is_aligned (f3 [1:0], addr);
+         rg_dbg_rsp_err <= !is_aligned;
 
          // Read responses are available depending on RAM latency, 
          // write responses take a cycle more
@@ -270,6 +314,17 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          rg_dbg_wdata <= wdata;
          rg_dbg_f3 <= f3;
          rg_dbg_addr <= addr;
+
+         if (verbosity > 1) begin
+            $display ("%06d:[D]:%m.backdoor.req", cur_cycle);
+            if (verbosity > 1) begin
+               $display ("           (addr 0x%08h) (wdata 0x%08h) (f3 0x%03b) (read "
+                  , addr, wdata, f3, fshow (read_not_write), ")");
+            end
+
+            if (!is_aligned) 
+               $display ("%06d:[E]:%m.backdoor.req: ADDR_MISALIGNED", cur_cycle);
+         end
       endmethod
 
 `ifdef REG_I_OUT
@@ -281,9 +336,21 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
          let ram_out  = fn_extract_and_extend_bytes (
             rg_dbg_f3, rg_dbg_addr, iram.read);
+
+         if (verbosity > 0) begin
+            $display ("%06d:[D]:%m.backdoor.rsp", cur_cycle);
+            if (verbosity > 1) begin
+               $display ("           (ram_out 0x%08h) (err "
+                  , ram_out, fshow (rg_dbg_rsp_err), ")");
+            end
+         end
+
          return (tuple2 (ram_out, rg_dbg_rsp_err));
       endmethod
    endinterface
+`endif
+`ifdef TCM_LOADER
+   interface loader = itcm_loader.axi;
 `endif
 endmodule
 endpackage : ITCM
