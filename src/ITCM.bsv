@@ -41,7 +41,6 @@ import Near_Mem_IFC     :: *;
 import MMU_Cache_Common :: *;
 import Fabric_Defs      :: *;
 import Core_Map         :: *;
-import TCM_AXI4_Adapter :: *;
 
 // ================================================================
 // BRAM config constants
@@ -67,7 +66,7 @@ interface ITCM_IFC;
 
 `ifdef TCM_LOADER
    // DMA server interface for loader access to the ITCM
-   interface Near_Mem_DMA_IFC loader;
+   interface TCM_DMA_IFC dma;
 `endif
 endinterface
 
@@ -169,19 +168,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 `endif
 
-`ifdef TCM_LOADER
-   Loader_AXI4_Adapter_IFC itcm_loader <- mkLoader_AXI4_Adapter (
-      iram, verbosity);
-`endif
-
    rule rl_reset (rg_state == RST);
       rg_state <= RDY;
       rg_rsp_valid.clear;
 `ifdef REG_I_OUT
       rg_rsp_valid_d.clear;
-`endif
-`ifdef TCM_LOADER
-      itcm_loader.reset;
 `endif
    endrule
 
@@ -249,7 +240,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
             $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
          end
-         else if (!(addr_map.m_is_itcm_addr_1 (fabric_addr))) begin
+         else if (!(addr_map.m_is_itcm_addr (fabric_addr))) begin
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
             $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
          end
@@ -350,7 +341,22 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    endinterface
 `endif
 `ifdef TCM_LOADER
-   interface loader = itcm_loader.axi;
+   interface TCM_DMA_IFC dma;
+      method Action req (Bit #(32) addr, Bit #(32) wdata);
+
+         // Assuming that all DMA accesses to the ITCM are full word only
+         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         iram.put (True, word_addr, wdata);
+
+         if (verbosity > 1) begin
+            $display ("%06d:[D]:%m.backdoor.req", cur_cycle);
+            if (verbosity > 2) begin
+               $display ("           (addr 0x%08h) (wdata 0x%08h)"
+                  , addr, wdata);
+            end
+         end
+      endmethod
+   endinterface
 `endif
 endmodule
 endpackage : ITCM

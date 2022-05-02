@@ -57,9 +57,7 @@ import APB_Types        :: *;
 import APB_Defs         :: *;
 `endif
 
-`ifdef INCLUDE_GDB_CONTROL
-import DM_CPU_Req_Rsp   :: *;
-`endif
+import DM_CPU_Req_Rsp    :: *;   // for SB_Sys_Req
 
 
 // ================================================================
@@ -126,15 +124,19 @@ interface DMem_IFC;
    interface Get #(Maybe #(Exc_Code))  exc;
 endinterface
 
+`ifdef TCM_LOADER
+interface TCM_DMA_IFC;
+   method Action req (Bit #(32) addr, Bit #(32) wdata);
+endinterface
+`endif
+
 interface Near_Mem_IFC;
    // ----------------
    // IMem
 
    // CPU side
    interface IMem_IFC  imem;
-`ifdef TCM_LOADER
-   interface Near_Mem_DMA_IFC dma_server;
-`endif
+
    // ----------------
    // DMem
 
@@ -156,6 +158,10 @@ interface Near_Mem_IFC;
    // AXI4 DMA target interface (for backdoor/debug access of TCMs)
  
    interface Server #(SB_Sys_Req, SB_Sys_Rsp) dbg_server;
+`endif
+
+`ifdef TCM_LOADER
+   interface Server #(SB_Sys_Req, Bool) dma_server;
 `endif
 
    // ----------------------------------------------------------------

@@ -97,12 +97,10 @@ import APB_Defs         :: *;
 import APB_Adapter      :: *;
 `endif
 
-`ifdef INCLUDE_GDB_CONTROL
-import DM_Common        :: *;
-import DM_CPU_Req_Rsp   :: *;
-import Core_Map         :: *;
-`endif
+import DM_Common        :: *;    // for fn_sbaccess_to_f3
+import DM_CPU_Req_Rsp   :: *;    // for SB_Sys_Req
 
+import Core_Map         :: *;
 import ITCM             :: *;
 import DTCM             :: *;
 
@@ -142,7 +140,11 @@ module mkNear_Mem (Near_Mem_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
    FIFOF #(Bool) f_sb_imem_not_dmem  <- mkFIFOF1;
-   Core_Map_IFC addr_map <- mkCore_Map;
+`endif
+
+`ifdef TCM_LOADER
+   // Indicates error for a loader request
+   FIFOF #(Bool) f_loader_err <- mkFIFOF;
 `endif
 
    // ----------------
@@ -150,6 +152,7 @@ module mkNear_Mem (Near_Mem_IFC);
 
    DTCM_IFC dtcm <- mkDTCM   (verbosity);
    ITCM_IFC itcm <- mkITCM   (verbosity);
+   Core_Map_IFC addr_map <- mkCore_Map;
 
    // ================================================================
    // INTERFACE
@@ -159,9 +162,6 @@ module mkNear_Mem (Near_Mem_IFC);
 
    // CPU side
    interface imem = itcm.imem;
-`ifdef TCM_LOADER
-   interface dma_server = itcm.loader;
-`endif
 
    // ----------------
    // DMem
@@ -246,6 +246,51 @@ module mkNear_Mem (Near_Mem_IFC);
             return (rsp);
          endmethod
       endinterface
+   endinterface
+`endif
+
+`ifdef TCM_LOADER
+   // ----------------
+   // DMA access into Near_Mem
+   interface Server dma_server;
+      interface Put request;
+         method Action put (SB_Sys_Req req);
+            // for all the checks relating to the soc-map
+            Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
+            let imem_not_dmem = addr_map.m_is_itcm_addr (fabric_addr);
+
+            // Goodness checks - range, alignment, access size
+            let addr_aligned = fn_is_aligned (
+               (fn_sbaccess_to_f3 (req.size))[1:0], req.addr);
+
+            let addr_in_range = (
+                  addr_map.m_is_itcm_addr (fabric_addr)
+               || addr_map.m_is_dtcm_addr (fabric_addr));
+
+            let full_word_access = (fn_sbaccess_to_f3 (req.size) == f3_LW);
+            let loader_err = !(addr_aligned && addr_in_range && full_word_access);
+
+            if (addr_aligned && addr_in_range && full_word_access) begin
+               // Write ITCM
+               if (imem_not_dmem) itcm.dma.req (req.addr, req.wdata);
+
+               // Write DTCM
+               else dtcm.dma.req (req.addr, req.wdata);
+            end
+
+            f_loader_err.enq (loader_err);
+
+            if (verbosity > 1) begin
+               $display ("%06d:[D]:%m.dma_server.request", cur_cycle);
+               if (verbosity > 2) begin
+                  $display ("           ", fshow (req));
+                  $display ("           (err ", fshow (loader_err), ")");
+               end
+            end
+         endmethod
+      endinterface
+
+      interface Get response = toGet (f_loader_err);
    endinterface
 `endif
 

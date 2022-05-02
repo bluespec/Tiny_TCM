@@ -82,6 +82,9 @@ interface DTCM_IFC;
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
    method Fabric_Data mv_tohost_value;
 `endif
+`ifdef TCM_LOADER
+   interface TCM_DMA_IFC dma;
+`endif
 endinterface
 
 (* synthesize *)
@@ -107,28 +110,82 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // mutually exclusive. The only reason to go with DPRAMs is if we can move the
    // muxing between the two channels to hardened logic inside the BRAM cell.
 
-   // The TCM RAM
+
 `ifdef MICROSEMI
-// BRAM_DUAL_PORT_BE #(  TCM_INDEX
-   BRAM_PORT_BE #(  TCM_INDEX
-                       , TCM_Word
-//                     , Bytes_per_TCM_Word) mem  <- mkBRAMCore2BE (  n_words_BRAM
-                       , Bytes_per_TCM_Word) mem  <- mkBRAMCore1BE (  n_words_BRAM
-                                                                    , config_output_register_BRAM);
+// Microsemi devices do not have BRAMs that can be loaded with a file
+`ifdef INCLUDE_GDB_CONTROL
+   // The TCM RAM - dual-ported to allow backdoor debug access
+   BRAM_DUAL_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM 
+                                                 , config_output_register_BRAM);
 `else
-// BRAM_DUAL_PORT_BE #(  TCM_INDEX
-   BRAM_PORT_BE #(  TCM_INDEX
-                       , TCM_Word
-//                     , Bytes_per_TCM_Word) mem  <- mkBRAMCore2BELoad (  n_words_BRAM
-                       , Bytes_per_TCM_Word) mem  <- mkBRAMCore1BELoad (  n_words_BRAM
-                                                                        , config_output_register_BRAM
-                                                                        , "/tmp/dtcm.mem"
-                                                                        , load_file_is_binary_BRAM);
+`ifdef TCM_LOADER
+   // The TCM RAM - dual-ported to allow backdoor loader access
+   BRAM_DUAL_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM 
+                                                 , config_output_register_BRAM);
+`else
+   // The TCM RAM - single-ported - no GDB, no loader
+   BRAM_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_BRAM
+                                                 , config_output_register_BRAM);
+`endif
 `endif
 
-   // The "front-door" to the dtcm (port A)
-   // let ram  = mem.a;
-   let ram  = mem;
+`else
+// Xilinx device BRAMs can be loaded with a file
+`ifdef INCLUDE_GDB_CONTROL
+   // The TCM RAM - dual-ported to allow backdoor debug access
+   BRAM_DUAL_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+                                                     , config_output_register_BRAM
+                                                     , "/tmp/dtcm.mem"
+                                                     , load_file_is_binary_BRAM);
+`else
+`ifdef TCM_LOADER
+   // The TCM RAM - dual-ported to allow backdoor loader access
+   BRAM_DUAL_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+                                                     , config_output_register_BRAM
+                                                     , "/tmp/itcm.mem"
+                                                     , load_file_is_binary_BRAM);
+`else
+   // The TCM RAM - single-ported with file loading - no GDB, no loader
+   BRAM_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BELoad ( n_words_BRAM
+                                                     , config_output_register_BRAM
+                                                     , "/tmp/itcm.mem"
+                                                     , load_file_is_binary_BRAM);
+`endif
+`endif
+`endif
+
+`ifdef INCLUDE_GDB_CONTROL
+   // GDB defined
+   let dmem_cpu = mem.a; 
+   let dmem_dbg = mem.b;
+`else
+`ifdef TCM_LOADER
+   // GDB not defined, Loader is defined
+   let dmem_cpu = mem.a; 
+   let dmem_dbg = mem.b;
+`else
+   // GDB and Loader not defined
+   let dmem_cpu = mem;
+`endif
+`endif
 
    // ----------------
    // Reservation regs for AMO LR/SC (Load-Reserved/Store-Conditional)
@@ -301,7 +358,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `ifdef ISA_A
          if (! sc_fail)
 `endif
-            ram.put (byte_en, word_addr, ram_st_value);
+            dmem_cpu.put (byte_en, word_addr, ram_st_value);
 `ifdef ISA_A
          Bit #(32) final_st_val = sc_fail ? 0 : ram_st_value;
 `else
@@ -353,7 +410,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 
       // For CACHE_LD and LR, simply forward the RAM output
       let ram_out  = fn_extract_and_extend_bytes (
-         req.f3, req.va, pack (ram.read));
+         req.f3, req.va, pack (dmem_cpu.read));
 
       // the outgoing response
       let word32 = ram_out;
@@ -439,7 +496,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // If it is a CACHE_ST or AMO store, the actual write
          // happens in the response phase or AMO phase
          TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
-         ram.put (0, word_addr, ?);
+         dmem_cpu.put (0, word_addr, ?);
 
          // for all the checks relating to the soc-map
          Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (addr);
@@ -478,6 +535,26 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
    interface mem_master = fabric_adapter.mem_master;
 
+`ifdef TCM_LOADER
+   interface TCM_DMA_IFC dma;
+      method Action req (Bit #(32) addr, Bit #(32) wdata);
+
+         // Assuming that all DMA accesses to the DTCM are full word only
+         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         // match {.byte_en, .st_val} = fn_byte_adjust_write (f3, addr, wdata);
+
+         dmem_dbg.put ('hF, word_addr, wdata);
+
+         if (verbosity > 1) begin
+            $display ("%06d:[D]:%m.backdoor.req", cur_cycle);
+            if (verbosity > 2) begin
+               $display ("           (addr 0x%08h) (wdata 0x%08h)"
+                  , addr, wdata);
+            end
+         end
+      endmethod
+   endinterface
+`endif
    // ----------------------------------------------------------------
    // Misc. control and status
 
@@ -498,6 +575,5 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
 
 endmodule
-
 
 endpackage : DTCM
