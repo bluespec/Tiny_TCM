@@ -56,6 +56,8 @@ Bool load_file_is_binary_BRAM = False;    // load file is in hex format
 typedef enum { RST, RDY } ITCM_State deriving (Bits, Eq, FShow);
 
 interface ITCM_IFC;
+   interface Server #(Token, Token) server_reset;
+
    // CPU side
    interface IMem_IFC  imem;
 
@@ -152,6 +154,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 `endif
    Core_Map_IFC addr_map <- mkCore_Map;
+   FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
 
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
@@ -171,8 +174,14 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    rule rl_reset (rg_state == RST);
       rg_state <= RDY;
       rg_rsp_valid.clear;
+      rg_rsp_exc <= tagged Invalid;
 `ifdef REG_I_OUT
       rg_rsp_valid_d.clear;
+`endif
+
+`ifdef INCLUDE_GDB_CONTROL
+      rg_dbg_rsp_valid <= False;
+      rg_dbg_rsp_err   <= False;
 `endif
    endrule
 
@@ -210,6 +219,23 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 
    // ----------------------------------------------------------------
    // INTERFACE
+
+   interface Server server_reset;
+      interface Put request;
+         method Action put (Token token);
+            rg_state <= RST;
+            // This response is placed here, and not in rl_reset, because
+            // reset_loop can happen on power-up, where no response is expected.
+            f_reset_rsps.enq (?);
+         endmethod
+      endinterface
+      interface Get response;
+         method ActionValue #(Token) get if (rg_state == RDY);
+            let token <- pop (f_reset_rsps);
+            return token;
+         endmethod
+      endinterface
+   endinterface
 
    // CPU side -- can only be invoked after earlier response has
    // been consumed
@@ -285,9 +311,9 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          , Bit #(32) wdata
          , Bit #(3)  f3)
 `ifdef REG_I_OUT
-         if ((!rg_dbg_rsp_valid) && (!rg_dbg_rsp_valid_d));
+         if ((rg_state == RDY) && (!rg_dbg_rsp_valid) && (!rg_dbg_rsp_valid_d));
 `else
-         if  (!rg_dbg_rsp_valid);
+         if ((rg_state == RDY) && (!rg_dbg_rsp_valid));
 `endif
 
          // read the RAM
@@ -319,10 +345,12 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
       endmethod
 
 `ifdef REG_I_OUT
-      method ActionValue #(Tuple2 #(Bit #(32), Bool)) rsp if (rg_dbg_rsp_valid_d);
+      method ActionValue #(Tuple2 #(Bit #(32), Bool)) rsp
+         if ((rg_state == RDY) && (rg_dbg_rsp_valid_d));
          rg_dbg_rsp_valid_d <= False;
 `else
-      method ActionValue #(Tuple2 #(Bit #(32), Bool)) rsp if (rg_dbg_rsp_valid);
+      method ActionValue #(Tuple2 #(Bit #(32), Bool)) rsp
+         if ((rg_state == RDY) && (rg_dbg_rsp_valid));
          rg_dbg_rsp_valid <= False;
 `endif
          let ram_out  = fn_extract_and_extend_bytes (
@@ -342,8 +370,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;
-      method Action req (Bit #(32) addr, Bit #(32) wdata);
-
+      method Action req (Bit #(32) addr, Bit #(32) wdata) if (rg_state == RDY);
          // Assuming that all DMA accesses to the ITCM are full word only
          TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
          iram.put (True, word_addr, wdata);

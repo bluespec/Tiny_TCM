@@ -135,7 +135,9 @@ module mkNear_Mem (Near_Mem_IFC);
    //            3: + detail
    Bit #(2) verbosity = 0;
 
-   // FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
+   FIFOF #(Token) f_reset_reqs <- mkFIFOF1;
+   FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
+   
    // don't need this read-vs-write record any more as we got rid of final_st_val
 `ifdef INCLUDE_GDB_CONTROL
    FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
@@ -154,8 +156,24 @@ module mkNear_Mem (Near_Mem_IFC);
    ITCM_IFC itcm <- mkITCM   (verbosity);
    Core_Map_IFC addr_map <- mkCore_Map;
 
+   rule rl_reset_start;
+      dtcm.server_reset.request.put (?);
+      itcm.server_reset.request.put (?);
+      f_reset_reqs.deq;
+      if (verbosity > 1) $display ("%06d:[D]:%m.rl_reset_start", cur_cycle);
+   endrule
+
+   rule rl_reset_complete;
+      let d <- dtcm.server_reset.response.get ();
+      let i <- itcm.server_reset.response.get ();
+      f_reset_rsps.enq (?);
+      if (verbosity > 1) $display ("%06d:[D]:%m.rl_reset_complete", cur_cycle);
+   endrule
+
    // ================================================================
    // INTERFACE
+
+   interface Server server_reset = toGPServer (f_reset_reqs, f_reset_rsps);
 
    // ----------------
    // IMem

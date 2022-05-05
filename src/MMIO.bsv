@@ -38,17 +38,9 @@ import Near_Mem_IFC     :: *;
 // ================================================================
 // MODULE INTERFACE
 
-interface IMMIO_IFC;
-   method Action start;
-
-   method Tuple2 #(Bool, Instr) result;
-
-   interface Get #(Single_Req)  g_mem_req;
-   interface Put #(Read_Data)   p_mem_read_data;
-endinterface
-
 interface DMMIO_IFC;
    method Action start;
+   method Action reset;
 endinterface
 
 // ================================================================
@@ -235,6 +227,12 @@ module mkDMMIO #(
    method Action start;
       // rg_err <= False;
       rg_fsm_state <= FSM_START;
+   endmethod
+
+   method Action reset;
+      rg_fsm_state <= FSM_IDLE;
+      if (verbosity > 1)
+         $display ("%06d:[D]:%m.reset", cur_cycle);
    endmethod
 endmodule
 

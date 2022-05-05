@@ -132,6 +132,10 @@ endinterface
 
 interface Near_Mem_IFC;
    // ----------------
+   // Reset
+   interface Server #(Token, Token) server_reset;
+
+   // ----------------
    // IMem
 
    // CPU side

@@ -376,12 +376,14 @@ module mkTCM_AXI4_Adapter #(
    // INTERFACE
 
    method Action reset;
+`ifdef STANDALONE
       f_single_reqs.clear;
       f_single_write_data.clear;
       f_single_read_data.clear;
+`endif
       master_xactor.reset;
       if (verbosity > 1)
-         $display ("%0d: %m.reset", cur_cycle);
+         $display ("%06d:[D]:%m.reset", cur_cycle);
    endmethod
 
 

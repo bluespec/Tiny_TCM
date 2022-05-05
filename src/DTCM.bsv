@@ -68,8 +68,12 @@ Bool config_output_register_BRAM = False;    // i.e., no output register
 Bool load_file_is_binary_BRAM = False;       // file to be loaded is in hex format
 
 // ================================================================
-// TCM interfaces
+// Interface and local type definition
+typedef enum { RST, RDY } DTCM_State deriving (Bits, Eq, FShow);
+
 interface DTCM_IFC;
+   interface Server #(Token, Token) server_reset;
+
    // CPU side
    // interface Server #(Near_Mem_DReq, Near_Mem_DRsp)  dmem;
    interface DMem_IFC  dmem;
@@ -232,6 +236,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
 `endif
 
+   FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
+   Reg #(DTCM_State) rg_state <- mkReg (RST);
+
    // Access to fabric for non-TCM requests
    DMMIO_IFC        mmio            <- mkDMMIO (  f_req
                                                 , f_rsp_word32
@@ -257,6 +264,33 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    APB_Adapter_IFC fabric_adapter <- mkAPB_Adapter (
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
+
+   rule rl_reset (rg_state == RST);
+      f_req.clear;
+      f_rsp_word32.clear;
+      f_rsp_exc.clear;
+      rg_rsp_from_mmio  <= False;
+      rg_exc            <= tagged Invalid;
+`ifdef ISA_A
+      f_rsp_final_st_val.clear;
+      rg_lrsc_valid <= False;
+`endif
+
+      f_mem_req.clear;
+      f_mem_wdata.clear;
+      f_mem_rdata.clear;
+      fabric_adapter.reset;
+      mmio.reset;
+
+`ifndef SYNTHESIS
+`ifdef WATCH_TOHOST
+      rg_watch_tohost <= True;
+      rg_tohost_value <= 0;
+`endif
+`endif
+
+      rg_state <= RDY;
+   endrule
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -453,6 +487,24 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // ----------------------------------------------------------------
    // INTERFACE
 
+   interface Server server_reset;
+      interface Put request;
+         method Action put (Token token);
+            rg_state <= RST;
+            // This response is placed here, and not in rl_reset, because
+            // reset_loop can happen on power-up, where no response is expected.
+            f_reset_rsps.enq (?);
+         endmethod
+      endinterface
+      interface Get response;
+         method ActionValue #(Token) get if (rg_state == RDY);
+            let token <- pop (f_reset_rsps);
+            return token;
+         endmethod
+      endinterface
+   endinterface
+
+
    // CPU side
    interface DMem_IFC dmem;
       // CPU interface: request
@@ -462,7 +514,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          , Bit #(3) f3
          , WordXL addr
          , Bit #(32) store_value
-      );
+      ) if (rg_state == RDY);
          // Note: ignoring all VM args for this version of Near_Mem_TCM
          // if (verbosity > 1) $display ("%0d: %m.req: ", cur_cycle, fshow (req));
 
@@ -524,11 +576,26 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       // endinterface
 
       // CPU interface: response
-      interface Get  word32 = toGet (f_rsp_word32);
+      interface Get word32;
+         method ActionValue# (Bit #(32)) get if (rg_state == RDY);
+            f_rsp_word32.deq;
+            return (f_rsp_word32.first);
+         endmethod
+      endinterface
 `ifdef ISA_A
-      interface Get  final_st_val = toGet (f_rsp_final_st_val);
+      interface Get final_st_val;
+         method ActionValue# (Bit #(32)) get if (rg_state == RDY);
+            f_rsp_final_st_val.deq;
+            return (f_rsp_final_st_val.first);
+         endmethod
+      endinterface
 `endif
-      interface Get  exc = toGet (f_rsp_exc);
+      interface Get exc;
+         method ActionValue# (Maybe #(Exc_Code)) get if (rg_state == RDY);
+            f_rsp_exc.deq;
+            return (f_rsp_exc.first);
+         endmethod
+      endinterface
    endinterface
 
    // Fabric side
@@ -537,7 +604,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;
-      method Action req (Bit #(32) addr, Bit #(32) wdata);
+      method Action req (Bit #(32) addr, Bit #(32) wdata) if (rg_state == RDY);
 
          // Assuming that all DMA accesses to the DTCM are full word only
          TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
@@ -562,14 +629,15 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
 
 `ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr)
+      if (rg_state == RDY);
       rg_watch_tohost <= watch_tohost;
       rg_tohost_addr  <= tohost_addr;
       $display ("%0d: %m.set_watch_tohost: watch %0d, addr %08h",
                 cur_cycle, watch_tohost, tohost_addr);
    endmethod
 
-   method Fabric_Data mv_tohost_value;
+   method Fabric_Data mv_tohost_value if (rg_state == RDY);
       return rg_tohost_value;
    endmethod
 `endif
