@@ -75,14 +75,21 @@ endinterface
 // ================================================================
 // Here begins the module
 //
+`ifdef TCM_DP_SINGLE_MEM
+module mkITCM #(
+        BRAM_PORT_BE #(TCM_INDEX, TCM_Word) irom
+      , Bit #(2) verbosity) (ITCM_IFC);
+`else
 (* synthesize *)
 module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
+`endif
 
    // Verbosity: 0: quiet
    //            1: requests and responses
    //            2: rule firings
    //            3: + detail
 
+`ifndef TCM_DP_SINGLE_MEM
 `ifdef MICROSEMI
 // Microsemi devices do not have BRAMs that can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
@@ -131,6 +138,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 `endif
 `endif
+`endif
 
    Reg #(ITCM_State) rg_state <- mkReg (RST);
    Reg #(Maybe #(Exc_Code)) rg_rsp_exc <- mkReg (tagged Invalid);
@@ -156,6 +164,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    Core_Map_IFC addr_map <- mkCore_Map;
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
 
+`ifndef TCM_DP_SINGLE_MEM
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
    let irom = mem.a; 
@@ -168,6 +177,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `else
    // GDB and Loader not defined
    let irom = mem;
+`endif
 `endif
 `endif
 
@@ -252,7 +262,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          // effect and can be safely initiated without waiting for
          // all the results to come in on the address. 
          TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+`ifdef TCM_DP_SINGLE_MEM
+         irom.put (0, word_addr, ?);
+`else
          irom.put (False, word_addr, ?);
+`endif
 
          // for all the checks relating to the soc-map
          Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (addr);
@@ -266,7 +280,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
             $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
          end
-         else if (!(addr_map.m_is_itcm_addr (fabric_addr))) begin
+         else if (!(addr_map.m_is_tcm_addr (fabric_addr))) begin
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
             $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
          end

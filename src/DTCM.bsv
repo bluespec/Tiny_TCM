@@ -91,8 +91,15 @@ interface DTCM_IFC;
 `endif
 endinterface
 
+
+`ifdef TCM_DP_SINGLE_MEM
+module mkDTCM #(
+        BRAM_PORT_BE #(TCM_INDEX, TCM_Word) dmem_cpu
+      , Bit #(2) verbosity) (DTCM_IFC);
+`else
 (* synthesize *)
 module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
+`endif
 
    // Verbosity: 0: quiet
    //            1: Requests and responses
@@ -115,6 +122,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // muxing between the two channels to hardened logic inside the BRAM cell.
 
 
+`ifndef TCM_DP_SINGLE_MEM
 `ifdef MICROSEMI
 // Microsemi devices do not have BRAMs that can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
@@ -190,6 +198,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    let dmem_cpu = mem;
 `endif
 `endif
+`endif
 
    // ----------------
    // Reservation regs for AMO LR/SC (Load-Reserved/Store-Conditional)
@@ -262,6 +271,10 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
 `ifdef FABRIC_APB
    APB_Adapter_IFC fabric_adapter <- mkAPB_Adapter (
+      verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
+`endif
+`ifdef FABRIC_GPIO
+   GPIO_Adapter_IFC fabric_adapter <- mkGPIO_Adapter (
       verbosity_fabric, f_mem_req, f_mem_wdata, f_mem_rdata);
 `endif
 
@@ -561,7 +574,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          end
 
          // TCM reqs
-         else if (addr_map.m_is_dtcm_addr (fabric_addr)) begin
+         else if (addr_map.m_is_tcm_addr (fabric_addr)) begin
             rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= False;
          end

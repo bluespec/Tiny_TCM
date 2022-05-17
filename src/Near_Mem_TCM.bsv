@@ -105,6 +105,13 @@ import ITCM             :: *;
 import DTCM             :: *;
 
 // ================================================================
+// BRAM config constants
+
+Bool config_output_register_BRAM = False;    // i.e., no output register
+Bool load_file_is_binary_BRAM = False;       // file to be loaded is in hex format
+
+
+// ================================================================
 // Dummy server interfaces to stub off fence requests
 function Server #(Token, Token) fv_dummy_server_stub;
    return (
@@ -149,11 +156,28 @@ module mkNear_Mem (Near_Mem_IFC);
    FIFOF #(Bool) f_loader_err <- mkFIFOF;
 `endif
 
+`ifdef TCM_DP_SINGLE_MEM
+   BRAM_DUAL_PORT_BE #(
+        TCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+                                                     , config_output_register_BRAM
+                                                     , "/tmp/tcm.mem"
+                                                     , load_file_is_binary_BRAM);
+   let imem = mem.a; 
+   let dmem = mem.b;
+`endif
+
    // ----------------
    // Connections into the RAM
 
+`ifdef TCM_DP_SINGLE_MEM
+   DTCM_IFC dtcm <- mkDTCM   (dmem, verbosity);
+   ITCM_IFC itcm <- mkITCM   (imem, verbosity);
+`else
    DTCM_IFC dtcm <- mkDTCM   (verbosity);
    ITCM_IFC itcm <- mkITCM   (verbosity);
+`endif
    Core_Map_IFC addr_map <- mkCore_Map;
 
    rule rl_reset_start;
