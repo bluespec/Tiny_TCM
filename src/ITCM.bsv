@@ -77,7 +77,7 @@ endinterface
 //
 `ifdef TCM_DP_SINGLE_MEM
 module mkITCM #(
-        BRAM_PORT_BE #(TCM_INDEX, TCM_Word) irom
+        BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) irom
       , Bit #(2) verbosity) (ITCM_IFC);
 `else
 (* synthesize *)

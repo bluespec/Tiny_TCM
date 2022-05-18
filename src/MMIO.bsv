@@ -46,8 +46,8 @@ endinterface
 // ================================================================
 
 typedef enum {FSM_IDLE,
-	      FSM_START,
-	      FSM_READ_RSP} FSM_State
+              FSM_START,
+              FSM_READ_RSP} FSM_State
 deriving (Bits, Eq, FShow);
 
 // ================================================================
@@ -62,7 +62,7 @@ module mkDMMIO #(
 `endif
    , FIFOF #(Maybe #(Exc_Code)) f_rsp_exc
    , FIFOF #(Single_Req)      f_mem_reqs
-   , FIFOF #(Bit #(32))       f_mem_wdata
+   , FIFOF #(Write_Data)      f_mem_wdata
    , FIFOF #(Read_Data)       f_mem_rdata
    , Bool                     rsp_from_mmio
    , Bit#(2)                  verbosity
@@ -77,17 +77,23 @@ module mkDMMIO #(
    // ----------------------------------------------------------------
    // Help-function for single-writes to mem
 
-   function Action fa_mem_single_write (Bit #(32) st_value);
+   function Action fa_mem_single_write (Write_Data st_value);
       action
-	 // Lane-align the outgoing data
-	 Bit #(5)  shamt_bits = { req_pa [1:0], 3'b000 };
-	 Bit #(32) data       = (st_value << shamt_bits);
+`ifdef FABRIC_GPIO
+         let r   = Single_Req {is_read:   False,
+                               addr:      truncate (req_pa)};
+         Write_Data data       = truncate (st_value);
+`else
+         // Lane-align the outgoing data
+         Bit #(5)   shamt_bits = { req_pa [1:0], 3'b000 };
+         Write_Data data       = (st_value << shamt_bits);
 
-	 let r   = Single_Req {is_read:   False,
-			       addr:      zeroExtend (req_pa),
-			       size_code: req.f3 [1:0]};
-	 f_mem_reqs.enq (r);
-	 f_mem_wdata.enq (data);
+         let r   = Single_Req {is_read:   False,
+                               addr:      zeroExtend (req_pa),
+                               size_code: req.f3 [1:0]};
+`endif
+         f_mem_reqs.enq (r);
+         f_mem_wdata.enq (data);
       endaction
    endfunction
 
@@ -96,17 +102,22 @@ module mkDMMIO #(
    // (all ops other than store and SC)
 
    rule rl_read_req ((rg_fsm_state == FSM_START)
-		     && (req.op != CACHE_ST)
+                     && (req.op != CACHE_ST)
 `ifdef ISA_A
-		     && (! fv_is_AMO_SC (req))
+                     && (! fv_is_AMO_SC (req))
 `endif
                      );
       if (verbosity >= 1)
-	 $display ("%0d: %m.rl_read_req: f3 %0h vaddr %0h  paddr %0h",
-		   cur_cycle, req.f3, req.va, req_pa);
+         $display ("%0d: %m.rl_read_req: f3 %0h vaddr %0h  paddr %0h",
+                   cur_cycle, req.f3, req.va, req_pa);
+`ifdef FABRIC_GPIO
       let r   = Single_Req {is_read:   True,
-			    addr:      zeroExtend (req_pa),
-			    size_code: req.f3 [1:0]};
+                            addr:      truncate (req_pa)};
+`else
+      let r   = Single_Req {is_read:   True,
+                            addr:      zeroExtend (req_pa),
+                            size_code: req.f3 [1:0]};
+`endif
       f_mem_reqs.enq (r);
       rg_fsm_state <= FSM_READ_RSP;
    endrule
@@ -119,54 +130,58 @@ module mkDMMIO #(
       let read_data <- pop (f_mem_rdata);
 
       if (verbosity >= 1) begin
-	 $display ("%0d: %m.rl_read_rsp: vaddr %0h  paddr %0h", cur_cycle, req.va, req_pa);
-	 $display ("    ", fshow (read_data));
+         $display ("%0d: %m.rl_read_rsp: vaddr %0h  paddr %0h", cur_cycle, req.va, req_pa);
+         $display ("    ", fshow (read_data));
       end
 
       // the outgoing response fields
       Maybe #(Exc_Code) rsp_exc = tagged Invalid;
+`ifdef FABRIC_GPIO
+      Bit #(32) rsp_word = extend (read_data.data);
+`else
       Bit #(32) rsp_word = ?;
 
       // Bus error
       if (! read_data.ok) begin
-	 if (verbosity >= 1)
-	    $display ("    MEM_RSP_ERR");
+         if (verbosity >= 1)
+            $display ("    MEM_RSP_ERR");
 
          rsp_exc       = tagged Valid fv_exc_code_access_fault (req);
       end
 
       // Successful read
       else begin
-	 let ld_val_bits = fv_from_byte_lanes (zeroExtend (req_pa), req.f3 [1:0], read_data.data);
+         let ld_val_bits = fv_from_byte_lanes (zeroExtend (req_pa), req.f3 [1:0], read_data.data);
 
-	 // Loads and LR
-	 if ((req.op == CACHE_LD) || fv_is_AMO_LR (req)) begin
-	    let ld_val = fv_extend (req.f3, ld_val_bits);
+         // Loads and LR
+         if ((req.op == CACHE_LD) || fv_is_AMO_LR (req)) begin
+            let ld_val = fv_extend (req.f3, ld_val_bits);
             rsp_word = ld_val;
-	    if (verbosity >= 1)
-	      $display ("    Load or LR: f3 %0h ld_val %08h", req.f3, ld_val);
-	 end
+            if (verbosity >= 1)
+              $display ("    Load or LR: f3 %0h ld_val %08h", req.f3, ld_val);
+         end
 `ifdef ISA_A
-	 // AMO read-modify-write
-	 else begin
-	    match {.final_ld_val,
-		   .final_st_val} = fv_amo_op (req.f3 [1:0],
-					       req.amo_funct7 [6:2],
-					       ld_val_bits,
-					       req.st_value);
-	    // Write back final_st_val
-	    fa_mem_single_write (final_st_val);
-	    if (verbosity >= 1) begin
-	      $display ("    AMO: f3 %0d  f7 %0h  ld_val %08h st_val %08h",
-			req.f3, req.amo_funct7, ld_val_bits, req.st_value);
-	      $display ("    => final_ld_val %0h final_st_val %08h",
-			final_ld_val, final_st_val);
-	    end
-	    rsp_word = final_ld_val;
+         // AMO read-modify-write
+         else begin
+            match {.final_ld_val,
+                   .final_st_val} = fv_amo_op (req.f3 [1:0],
+                                               req.amo_funct7 [6:2],
+                                               ld_val_bits,
+                                               req.st_value);
+            // Write back final_st_val
+            fa_mem_single_write (final_st_val);
+            if (verbosity >= 1) begin
+              $display ("    AMO: f3 %0d  f7 %0h  ld_val %08h st_val %08h",
+                        req.f3, req.amo_funct7, ld_val_bits, req.st_value);
+              $display ("    => final_ld_val %0h final_st_val %08h",
+                        final_ld_val, final_st_val);
+            end
+            rsp_word = final_ld_val;
             f_rsp_final_st_val.enq (final_st_val);
-	 end
+         end
 `endif
       end
+`endif         // ifndef FABRIC_GPIO
 
       rg_fsm_state    <= FSM_IDLE;
       f_rsp_word32.enq (rsp_word);
@@ -183,10 +198,14 @@ module mkDMMIO #(
       && rsp_from_mmio);
 
       if (verbosity >= 2)
-	 $display ("%0d: %m.rl_write_req; f3 %0h  vaddr %0h  paddr %0h  word64 %0h",
-		   cur_cycle, req.f3, req.va, req_pa, req.st_value);
+         $display ("%0d: %m.rl_write_req; f3 %0h  vaddr %0h  paddr %0h  word64 %0h",
+                   cur_cycle, req.f3, req.va, req_pa, req.st_value);
 
+`ifdef FABRIC_GPIO
+      Write_Data data = truncate (req.st_value);
+`else
       let data = fv_to_byte_lanes (zeroExtend (req_pa), req.f3 [1:0], req.st_value);
+`endif
 
       fa_mem_single_write (data);
 
@@ -214,9 +233,9 @@ module mkDMMIO #(
       f_req.deq;
 
       if (verbosity >= 1) begin
-	 $display ("%0d: %m.rl_AMO_SC; f3 %0h  vaddr %0h  paddr %0h  st_value %0h",
-		   cur_cycle, req.f3, req.va, req_pa, req.st_value);
-	 $display ("    FAIL due to I/O address.");
+         $display ("%0d: %m.rl_AMO_SC; f3 %0h  vaddr %0h  paddr %0h  st_value %0h",
+                   cur_cycle, req.f3, req.va, req_pa, req.st_value);
+         $display ("    FAIL due to I/O address.");
       end
    endrule
 `endif

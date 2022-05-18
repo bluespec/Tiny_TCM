@@ -164,16 +164,14 @@ module mkNear_Mem (Near_Mem_IFC);
                                                      , config_output_register_BRAM
                                                      , "/tmp/tcm.mem"
                                                      , load_file_is_binary_BRAM);
-   let imem = mem.a; 
-   let dmem = mem.b;
 `endif
 
    // ----------------
    // Connections into the RAM
 
 `ifdef TCM_DP_SINGLE_MEM
-   DTCM_IFC dtcm <- mkDTCM   (dmem, verbosity);
-   ITCM_IFC itcm <- mkITCM   (imem, verbosity);
+   DTCM_IFC dtcm <- mkDTCM   (mem.b, verbosity);
+   ITCM_IFC itcm <- mkITCM   (mem.a, verbosity);
 `else
    DTCM_IFC dtcm <- mkDTCM   (verbosity);
    ITCM_IFC itcm <- mkITCM   (verbosity);

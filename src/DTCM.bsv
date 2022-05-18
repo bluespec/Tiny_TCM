@@ -54,6 +54,11 @@ import APB_Defs         :: *;
 import APB_Adapter      :: *;
 `endif
 
+`ifdef FABRIC_GPIO
+import GPIO_Decls       :: *;
+import GPIO_Adapter     :: *;
+`endif
+
 `ifdef INCLUDE_GDB_CONTROL
 import DM_Common        :: *;
 import DM_CPU_Req_Rsp   :: *;
@@ -94,7 +99,7 @@ endinterface
 
 `ifdef TCM_DP_SINGLE_MEM
 module mkDTCM #(
-        BRAM_PORT_BE #(TCM_INDEX, TCM_Word) dmem_cpu
+        BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) dmem_cpu
       , Bit #(2) verbosity) (DTCM_IFC);
 `else
 (* synthesize *)
@@ -224,13 +229,14 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // The request and write data FIFOs need explicit EMPTY checking on the DEQ
    // side. This allows us to directly drive the APB signals from these FIFOs
    // removing the need for extra registers in the adapter
+   // FIFOs to interact with external fabric (MMIO <-> APB)
    FIFOF #(Single_Req)        f_mem_req   <- mkGFIFOF1 (False, True);
-   FIFOF #(Bit #(32))         f_mem_wdata <- mkGFIFOF1 (False, True);
+   FIFOF #(Write_Data)        f_mem_wdata <- mkGFIFOF1 (False, True);
    FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
 `else
-   // FIFOs to interact with external fabric (MMIO <-> AHB/AXI/APB)
+   // FIFOs to interact with external fabric (MMIO <-> AHB/AXI/GPIO)
    FIFOF #(Single_Req)        f_mem_req   <- mkFIFOF1;
-   FIFOF #(Bit #(32))         f_mem_wdata <- mkFIFOF1;
+   FIFOF #(Write_Data)        f_mem_wdata <- mkFIFOF1;
    FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
 `endif
 
@@ -613,7 +619,11 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 
    // Fabric side
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
+`ifdef FABRIC_GPIO
+   interface mem_master = fabric_adapter.gpio;
+`else
    interface mem_master = fabric_adapter.mem_master;
+`endif
 
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;

@@ -57,6 +57,11 @@ import APB_Types        :: *;
 import APB_Defs         :: *;
 `endif
 
+`ifdef FABRIC_GPIO
+import GPIO_Decls       :: *;
+import GPIO_Adapter     :: *;
+`endif
+
 import DM_CPU_Req_Rsp    :: *;   // for SB_Sys_Req
 
 
@@ -92,6 +97,9 @@ typedef AHBL_Master_IFC #(AHB_Wd_Data) Near_Mem_Fabric_IFC;
 `endif
 `ifdef FABRIC_APB
 typedef APB_Initiator_IFC Near_Mem_Fabric_IFC;
+`endif
+`ifdef FABRIC_GPIO
+typedef GPIO_Fabric_IFC Near_Mem_Fabric_IFC;
 `endif
 
 

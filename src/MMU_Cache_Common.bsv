@@ -8,8 +8,12 @@ package MMU_Cache_Common;
 // ================================================================
 // Project imports
 
-import ISA_Decls   :: *;
-import Fabric_Defs :: *;
+import ISA_Decls     :: *;
+import Fabric_Defs   :: *;
+
+`ifdef FABRIC_GPIO
+import GPIO_Decls    :: *;
+`endif
 
 // ================================================================
 // Near_Mem opcodes
@@ -238,7 +242,10 @@ deriving (Bits, FShow);
 
 // Single requests are from MMIO for 1, 2, 4 or 8 bytes.
 typedef struct {
-   Bool       is_read;
+   Bool                 is_read;
+`ifdef FABRIC_GPIO
+   Bit #(GPIO_Addr_LSB) addr;
+`else
 `ifdef ISA_PRIV_S
    Bit #(64)  addr;
 `else
@@ -246,18 +253,27 @@ typedef struct {
    Addr       addr;
 `endif
    Bit #(2)   size_code;    // 2'b00=1 (B), 01=2 (H), 10=4 (W), 11=8 (D) bytes
+`endif         // !FABRIC_GPIO
    } Single_Req
 deriving (Bits, FShow);
 
 // Response from L2
 
 typedef struct {
-   Bool       ok;
-   Bit #(32)  data;
+   Bool        ok;
+`ifdef FABRIC_GPIO
+   Bit #(1)    data;
+`else
+   Bit #(32)   data;
+`endif
    } Read_Data
 deriving (Bits, FShow);
 
-// Write-data is just Bit #(64) data; no need for a new type decl
+`ifdef FABRIC_GPIO
+typedef Bit #(1) Write_Data;
+`else
+typedef Bit #(32) Write_Data;
+`endif
 
 // ================================================================
 // Functions to/from lsb-justified data to fabric-lane-aligned data
