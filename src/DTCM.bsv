@@ -580,7 +580,11 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          end
 
          // TCM reqs
+`ifdef TCM_DP_SINGLE_MEM
          else if (addr_map.m_is_tcm_addr (fabric_addr)) begin
+`else
+         else if (addr_map.m_is_dtcm_addr (fabric_addr)) begin
+`endif
             rg_exc            <= tagged Invalid;
             rg_rsp_from_mmio  <= False;
          end

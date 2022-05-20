@@ -280,7 +280,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
             exc = tagged Valid exc_code_INSTR_ADDR_MISALIGNED;
             $display ("%06d:[E]:%m.req: INSTR_ADDR_MISALIGNED", cur_cycle);
          end
+`ifdef TCM_DP_SINGLE_MEM
          else if (!(addr_map.m_is_tcm_addr (fabric_addr))) begin
+`else
+         else if (!(addr_map.m_is_itcm_addr (fabric_addr))) begin
+`endif
             exc = tagged Valid exc_code_INSTR_ACCESS_FAULT;
             $display ("%06d:[E]:%m.req: INSTR_ACCESS_FAULT", cur_cycle);
          end
