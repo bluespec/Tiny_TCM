@@ -18,8 +18,6 @@ typedef 4 KB_PER_TCM;
 typedef 8 KB_PER_TCM;
 `elsif TCM_16K
 typedef 16 KB_PER_TCM;
-`elsif TCM_24K
-typedef 24 KB_PER_TCM;
 `elsif TCM_32K
 typedef 32 KB_PER_TCM;
 `elsif TCM_64K
@@ -32,6 +30,12 @@ typedef 256 KB_PER_TCM;
 typedef 512 KB_PER_TCM;
 `elsif TCM_1024K
 typedef 1024 KB_PER_TCM;
+`elsif TCM_2048K
+typedef 2048 KB_PER_TCM;
+`elsif TCM_4096K
+typedef 4096 KB_PER_TCM;
+`else
+typedef 4 KB_PER_TCM;   // Place holder default value
 `endif
 // --- USER CONFIGURABLE
 //
