@@ -176,6 +176,10 @@ interface Near_Mem_IFC;
    interface Server #(SB_Sys_Req, Bool) dma_server;
 `endif
 
+`ifdef ISA_X
+   interface Server #(SB_Sys_Req, SB_Sys_Rsp) x_server;
+`endif
+
    // ----------------------------------------------------------------
    // Misc. control and status
 

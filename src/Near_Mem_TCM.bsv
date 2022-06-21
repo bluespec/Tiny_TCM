@@ -151,6 +151,11 @@ module mkNear_Mem (Near_Mem_IFC);
    FIFOF #(Bool) f_sb_imem_not_dmem  <- mkFIFOF1;
 `endif
 
+`ifdef ISA_X
+   FIFOF #(Bool) f_x_read_not_write <- mkFIFOF1;
+   Reg #(Bool) rg_x_error  <- mkRegU;
+`endif
+
 `ifdef TCM_LOADER
    // Indicates error for a loader request
    FIFOF #(Bool) f_loader_err <- mkFIFOF;
@@ -331,6 +336,50 @@ module mkNear_Mem (Near_Mem_IFC);
       endinterface
 
       interface Get response = toGet (f_loader_err);
+   endinterface
+`endif
+
+`ifdef ISA_X
+   // ----------------
+   // Back-door from DM/System into Near_Mem
+   interface Server x_server;
+      interface Put request;
+         method Action put (SB_Sys_Req req);
+            // for all the checks relating to the soc-map
+            Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
+
+            dtcm.dmem.req (
+                 (req.read_not_write ? CACHE_LD : CACHE_ST)
+               , fn_sbaccess_to_f3 (req.size)
+               , truncate (req.addr)
+               , truncate (req.wdata)
+`ifdef ISA_A
+               , amo_funct7   : ?
+`endif
+            );
+
+            // Record read or write for the response path
+            f_x_read_not_write.enq (req.read_not_write);
+         endmethod
+      endinterface
+
+      interface Get response;
+         method ActionValue #(SB_Sys_Rsp) get;
+            // Is it a read or a write?
+            let read_not_write <- pop (f_x_read_not_write);
+            let rsp_dmem <- dtcm.dmem.word32.get ();
+            let err_dmem <- dtcm.dmem.exc.get ();
+
+            // The response packet to the debug module
+            let rsp = SB_Sys_Rsp {
+                 rdata           : rsp_dmem
+               , read_not_write  : read_not_write
+               , err             : isValid (err_dmem)
+            };
+
+            return (rsp);
+         endmethod
+      endinterface
    endinterface
 `endif
 
