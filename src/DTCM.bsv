@@ -127,7 +127,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // muxing between the two channels to hardened logic inside the BRAM cell.
 
 
-`ifndef TCM_DP_SINGLE_MEM
+`ifdef TCM_DP_SINGLE_MEM
+   let dmem_dbg = dmem_cpu;
+`else
 `ifdef MICROSEMI
 // Microsemi devices do not have BRAMs that can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
@@ -152,8 +154,8 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_BRAM
                                                  , config_output_register_BRAM);
-`endif
-`endif
+`endif   // TCM_LOADER
+`endif   // GDB_CONTROL
 
 `else
 // Xilinx device BRAMs can be loaded with a file
@@ -185,9 +187,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
                                                      , config_output_register_BRAM
                                                      , "/tmp/dtcm.mem"
                                                      , load_file_is_binary_BRAM);
-`endif
-`endif
-`endif
+`endif   // TCM_LOADER
+`endif   // GDB_CONTROL
+`endif   // MICROSEMI
 
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
@@ -201,9 +203,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `else
    // GDB and Loader not defined
    let dmem_cpu = mem;
-`endif
-`endif
-`endif
+`endif   // LOADER
+`endif   // GDB_CONTROL
+`endif   // TCM_DP_SINGLE_MEM
 
    // ----------------
    // Reservation regs for AMO LR/SC (Load-Reserved/Store-Conditional)

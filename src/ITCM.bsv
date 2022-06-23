@@ -164,7 +164,10 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    Core_Map_IFC addr_map <- mkCore_Map;
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
 
-`ifndef TCM_DP_SINGLE_MEM
+   // Name the BRAM ports based on ROM vs RAM use
+`ifdef TCM_DP_SINGLE_MEM
+   let iram = irom;
+`else
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
    let irom = mem.a; 
@@ -223,7 +226,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
       // arrange the store bits in the appropriate byte lanes
       let ram_st_value = fn_byte_adjust_rmw (rg_dbg_f3, rg_dbg_addr, rg_dbg_wdata, iram.read);
       TCM_INDEX word_addr = truncate (rg_dbg_addr >> bits_per_byte_in_tcm_word);
+`ifdef TCM_DP_SINGLE_MEM
+      iram.put ('hF, word_addr, ram_st_value);
+`else
       iram.put (True, word_addr, ram_st_value);
+`endif
    endrule
 `endif
 
@@ -336,7 +343,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 
          // read the RAM
          TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+`ifdef TCM_DP_SINGLE_MEM
+         iram.put (0, word_addr, ?);
+`else
          iram.put (False, word_addr, ?);
+`endif
 
          // Alignment check
          let is_aligned  = fn_is_aligned (f3 [1:0], addr);

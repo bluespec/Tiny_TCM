@@ -235,7 +235,15 @@ module mkNear_Mem (Near_Mem_IFC);
             Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
             Bool imem_not_dmem = True;
 
+            // In the case of the single-ported implementation for
+            // the MCU-L, all TCM debug accesses are serviced by
+            // the ITCM while non-TCM debug accesses are sent to
+            // the DTCM so that they can be serviced by the MMIO
+`ifdef TCM_DP_SINGLE_MEM
+            if (addr_map.m_is_tcm_addr (fabric_addr))
+`else
             if (addr_map.m_is_itcm_addr (fabric_addr))
+`endif
                itcm.backdoor.req (
                     req.read_not_write
                   , req.addr
@@ -254,6 +262,7 @@ module mkNear_Mem (Near_Mem_IFC);
                );
                imem_not_dmem = False;
             end
+
             // Record read or write for the response path
             f_sb_read_not_write.enq (req.read_not_write);
             f_sb_imem_not_dmem.enq (imem_not_dmem);
