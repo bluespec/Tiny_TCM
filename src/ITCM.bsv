@@ -118,7 +118,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    BRAM_DUAL_PORT #(TCM_INDEX
                   , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
                                                        , config_output_register_BRAM
-                                                       , "/tmp/itcm.mem"
+                                                       , itcmname
                                                        , load_file_is_binary_BRAM);
 `else
 `ifdef TCM_LOADER
@@ -126,14 +126,14 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    BRAM_DUAL_PORT #(TCM_INDEX
                   , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
                                                        , config_output_register_BRAM
-                                                       , "/tmp/itcm.mem"
+                                                       , itcmname
                                                        , load_file_is_binary_BRAM);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
    BRAM_PORT #(     TCM_INDEX
                   , TCM_Word) mem  <- mkBRAMCore1Load (  n_words_BRAM
                                                        , config_output_register_BRAM
-                                                       , "/tmp/itcm.mem"
+                                                       , itcmname
                                                        , load_file_is_binary_BRAM);
 `endif
 `endif

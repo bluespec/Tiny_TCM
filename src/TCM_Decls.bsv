@@ -40,6 +40,15 @@ typedef 4 KB_PER_TCM;   // Place holder default value
 // --- USER CONFIGURABLE
 //
 
+// Naming of TCM hex file(s)
+`ifdef HEXFILEPREFIX
+String itcmname = `HEXFILEPREFIX + "itcm.hex";
+String dtcmname = `HEXFILEPREFIX + "dtcm.hex";
+`else
+String itcmname = "/tmp/itcm.mem";
+String dtcmname = "/tmp/dtcm.mem";
+`endif
+
 typedef Bit #(TCM_XLEN)                   TCM_Word;
 typedef TDiv #(TCM_XLEN, Bits_per_Byte)   Bytes_per_TCM_Word;
 typedef TLog #(Bytes_per_TCM_Word)        Bits_per_Byte_in_TCM_Word;

@@ -166,7 +166,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
                                                      , config_output_register_BRAM
-                                                     , "/tmp/dtcm.mem"
+                                                     , dtcmname
                                                      , load_file_is_binary_BRAM);
 `else
 `ifdef TCM_LOADER
@@ -176,7 +176,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
                                                      , config_output_register_BRAM
-                                                     , "/tmp/dtcm.mem"
+                                                     , dtcmname
                                                      , load_file_is_binary_BRAM);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
@@ -185,7 +185,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore1BELoad ( n_words_BRAM
                                                      , config_output_register_BRAM
-                                                     , "/tmp/dtcm.mem"
+                                                     , dtcmname
                                                      , load_file_is_binary_BRAM);
 `endif   // TCM_LOADER
 `endif   // GDB_CONTROL
