@@ -84,6 +84,9 @@ import TCM_AXI4_Adapter :: *;
 
 import Fabric_Defs      :: *;
 import AXI4_Types       :: *;
+`ifdef NM_AXI4_LITE
+import AXI4_Lite_Types  :: *;
+`endif
 
 `ifdef FABRIC_AHBL
 import AHBL_Types       :: *;
@@ -404,10 +407,156 @@ module mkNear_Mem (Near_Mem_IFC);
 
 endmodule: mkNear_Mem
 
+`ifdef NM_AXI4_LITE
 // ================================================================
-// DMem
+//
+// Near-Mem wrapped to provide AXI4 target interface to the CPU
+// This wrapped version is to easily interface the Near-Mem to
+// other CPUs that may not have their our near-mems but speak a
+// standard protocol like AXI4.
+// 
+// The wrapper uses the ARPROT value to differentiate between
+// imem and dmem loads. All stores are to dmem only.
+//
+// TODO : Add pipelining -- currently processes one req at a time
 
-// DMem_Port into the TCM
-// ================================================================
+function Bit #(3) fn_axi4size_to_nmf3 (AXI4_Size size);
+   return (extend (size[1:0]));
+endfunction
+
+interface Near_Mem_AXI4_Wrap_IFC;
+   // "CPU" side which talks AXI4
+   interface AXI4_Lite_Slave_IFC #(Wd_Addr, Wd_Data, Wd_User) nm_fe;
+
+   // Fabric side (MMIO initiator interface)
+   interface Near_Mem_Fabric_IFC dmem_master;
+endinterface
+
+(* synthesize *)
+module mkNear_Mem_AXI4L_FE (Near_Mem_AXI4_Wrap_IFC);
+   Bit #(2) verbosity = 0;
+   Near_Mem_IFC  near_mem <- mkNear_Mem;
+   AXI4_Lite_Slave_Xactor_IFC #(
+      Wd_Addr, Wd_Data, Wd_User
+   ) fe_xactor <- mkAXI4_Lite_Slave_Xactor;
+
+   FIFOF #(Bool)           f_isI    <- mkFIFOF1;
+
+   // --------
+   // Forward read requests to the server
+   rule rl_rd_req;
+      let rra <- pop_o (fe_xactor.o_rd_addr);
+
+      f_isI.enq (unpack (rra.arprot[2]));
+
+      if (rra.arprot[2] == axprot_2_instr)
+         near_mem.imem.req (rra.araddr);
+      else
+         near_mem.dmem.req (
+              CACHE_LD
+            , f3_LW     // always 32-bit since AXI4-lite
+            , rra.araddr
+            , ?
+         );
+
+      if (verbosity > 1) begin
+         if (rra.arprot[2] == axprot_2_instr)
+            $display ("%06d:[D]:%m.rl_rd_req:[I]", cur_cycle);
+         else
+            $display ("%06d:[D]:%m.rl_rd_req:[D]", cur_cycle);
+         $display ("    ", fshow (rra));
+      end
+   endrule
+
+   // Forward read responses to the client
+   rule rl_rd_rsp;
+      let rdr = AXI4_Lite_Rd_Data {
+           rdata: ?
+         , rresp: AXI4_LITE_OKAY
+         , ruser: 0};
+
+      let isI <- pop (f_isI);
+
+      if (isI)  begin
+         match {.instr, .iexc} <- near_mem.imem.instr;
+         rdr.rdata = instr;
+         if (isValid (iexc)) rdr.rresp = AXI4_LITE_SLVERR;
+      end
+      else begin
+         let word32 <- near_mem.dmem.word32.get ();
+         let dexc <- near_mem.dmem.exc.get ();
+         rdr.rdata = word32;
+         if (isValid (dexc)) rdr.rresp = AXI4_LITE_SLVERR;
+      end
+
+      // Send response
+      fe_xactor.i_rd_data.enq (rdr);
+
+      if (verbosity > 1) begin
+         if (isI) $display ("%06d:[D]:%m.rl_rd_rsp:[I]", cur_cycle);
+         else     $display ("%06d:[D]:%m.rl_rd_rsp:[D]", cur_cycle);
+         $display ("    ", fshow (rdr));
+      end
+   endrule
+
+   // --------
+   // Forward write requests to the server
+   rule rl_wr_req;
+      let wra <- pop_o (fe_xactor.o_wr_addr);
+      let wrd <- pop_o (fe_xactor.o_wr_data);
+
+      // Based on write strobe create write data for near-mem
+      Bit #(2)    offset  = 0;   // byte offset in 32-bit word
+      Bit #(3)    f3      = f3_SB;
+      Bit #(Wd_Data) mask = 'hff;
+      // The offset shift to get the final st_value is only
+      // required if the source does *not* replicate the write data
+      // on all byte lanes. If the source replicates the write
+      // data, simply anding with the mask will suffice.
+      case (wrd.wstrb)
+	 'hF:  begin offset=0; mask = 'hFFFF_FFFF; f3=f3_SW; end
+	 'hC:  begin offset=2; mask =      'hFFFF; f3=f3_SH; end
+	 'h3:  begin offset=0; mask =      'hFFFF; f3=f3_SH; end
+	 'h8:  begin offset=3; mask =        'hFF; f3=f3_SB; end
+	 'h4:  begin offset=2; mask =        'hFF; f3=f3_SB; end
+	 'h2:  begin offset=1; mask =        'hFF; f3=f3_SB; end
+	 'h1:  begin offset=0; mask =        'hFF; f3=f3_SB; end
+      endcase
+
+      let st_value = ((wrd.wdata >> {offset, 3'b0}) & mask);
+      near_mem.dmem.req (
+           CACHE_ST
+         , f3
+         , wra.awaddr + extend (offset)
+         , st_value
+      );
+
+      if (verbosity > 1) begin
+         $display ("%06d:[D]:%m.rl_wr_req", cur_cycle);
+         $display ("    ", fshow (wra));
+         $display ("    ", fshow (wrd));
+      end
+   endrule
+
+   // Forward write responses to the client
+   rule rl_wr_rsp;
+      let word32 <- near_mem.dmem.word32.get ();
+      let exc <- near_mem.dmem.exc.get ();
+
+      // Send response
+      let wrr = AXI4_Lite_Wr_Resp {
+           bresp: (isValid (exc) ? AXI4_LITE_SLVERR : AXI4_LITE_OKAY)
+         , buser: 0};
+      fe_xactor.i_wr_resp.enq (wrr);
+
+      if (verbosity > 1) begin
+         $display ("%06d:[D]:%m.rl_wr_rsp", cur_cycle);
+      end
+   endrule
+
+   interface nm_fe = fe_xactor.axi_side;
+   interface dmem_master = near_mem.dmem_master;
+endmodule
+`endif
 
 endpackage : Near_Mem_TCM
