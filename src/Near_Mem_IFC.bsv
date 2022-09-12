@@ -62,7 +62,11 @@ import GPIO_Decls       :: *;
 import GPIO_Adapter     :: *;
 `endif
 
-import DM_CPU_Req_Rsp    :: *;   // for SB_Sys_Req
+import DM_CPU_Req_Rsp   :: *;   // for SB_Sys_Req
+
+`ifdef ISA_X
+import XTypes           :: *;
+`endif
 
 
 // ================================================================
@@ -177,7 +181,7 @@ interface Near_Mem_IFC;
 `endif
 
 `ifdef ISA_X
-   interface Server #(SB_Sys_Req, SB_Sys_Rsp) x_server;
+   interface Server #(X_M_Req, X_M_Rsp) x_server;
 `endif
 
    // ----------------------------------------------------------------

@@ -103,6 +103,10 @@ import APB_Adapter      :: *;
 import DM_Common        :: *;    // for fn_sbaccess_to_f3
 import DM_CPU_Req_Rsp   :: *;    // for SB_Sys_Req
 
+`ifdef ISA_X
+import XTypes           :: *;    // for x-server related stuff
+`endif
+
 import Core_Map         :: *;
 import ITCM             :: *;
 import DTCM             :: *;
@@ -155,8 +159,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
 
 `ifdef ISA_X
-   FIFOF #(Bool) f_x_read_not_write <- mkFIFOF1;
-   Reg #(Bool) rg_x_error  <- mkRegU;
+   FIFOF #(Bool) f_x_write <- mkFIFOF1;
 `endif
 
 `ifdef TCM_LOADER
@@ -356,14 +359,13 @@ module mkNear_Mem (Near_Mem_IFC);
    // Back-door from DM/System into Near_Mem
    interface Server x_server;
       interface Put request;
-         method Action put (SB_Sys_Req req);
-            // for all the checks relating to the soc-map
-            Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (req.addr);
-
+         method Action put (X_M_Req req);
+            // size should not exceed DTCM width in this
+            // implementation
             dtcm.dmem.req (
-                 (req.read_not_write ? CACHE_LD : CACHE_ST)
-               , fn_sbaccess_to_f3 (req.size)
-               , truncate (req.addr)
+                 (req.write ? CACHE_ST : CACHE_LD)
+               , fn_xsize_to_f3 (req.size)
+               , truncate (req.address)
                , truncate (req.wdata)
 `ifdef ISA_A
                , amo_funct7   : ?
@@ -371,22 +373,26 @@ module mkNear_Mem (Near_Mem_IFC);
             );
 
             // Record read or write for the response path
-            f_x_read_not_write.enq (req.read_not_write);
+            f_x_write.enq (req.write);
          endmethod
       endinterface
 
       interface Get response;
-         method ActionValue #(SB_Sys_Rsp) get;
+         method ActionValue #(X_M_Rsp) get;
             // Is it a read or a write?
-            let read_not_write <- pop (f_x_read_not_write);
+            let write <- pop (f_x_write);
             let rsp_dmem <- dtcm.dmem.word32.get ();
             let err_dmem <- dtcm.dmem.exc.get ();
 
-            // The response packet to the debug module
-            let rsp = SB_Sys_Rsp {
-                 rdata           : rsp_dmem
-               , read_not_write  : read_not_write
-               , err             : isValid (err_dmem)
+            // The response packet to the accelerator
+            let rsp = X_M_Rsp {
+`ifdef RV32
+                 rdata  : rsp_dmem
+`else
+                 rdata  : extend (rsp_dmem)
+`endif
+               , write  : write
+               , err    : isValid (err_dmem)
             };
 
             return (rsp);
@@ -412,7 +418,7 @@ endmodule: mkNear_Mem
 //
 // Near-Mem wrapped to provide AXI4 target interface to the CPU
 // This wrapped version is to easily interface the Near-Mem to
-// other CPUs that may not have their our near-mems but speak a
+// other CPUs that may not have our near-mems but speak a
 // standard protocol like AXI4.
 // 
 // The wrapper uses the ARPROT value to differentiate between
