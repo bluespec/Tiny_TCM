@@ -34,6 +34,10 @@ typedef 1024 KB_PER_TCM;
 typedef 2048 KB_PER_TCM;
 `elsif TCM_4096K
 typedef 4096 KB_PER_TCM;
+`elsif TCM_8192K
+typedef 8192 KB_PER_TCM;
+`elsif TCM_16384K
+typedef 16384 KB_PER_TCM;
 `else
 typedef 4 KB_PER_TCM;   // Place holder default value
 `endif
