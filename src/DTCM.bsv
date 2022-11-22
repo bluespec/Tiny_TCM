@@ -1,6 +1,6 @@
 // Copyright (c) 2022 Bluespec, Inc. All Rights Reserved.
 //
-// This package implements the ITCM and was hived off from
+// This package implements the DTCM and was hived off from
 // Tiny_TCM's Near_Mem_TCM for maintainability reasons. Please
 // refer to the introduction in Near_Mem_TCM for details.
 //
@@ -87,10 +87,6 @@ interface DTCM_IFC;
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
    interface Near_Mem_Fabric_IFC mem_master;
 
-`ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
-   method Fabric_Data mv_tohost_value;
-`endif
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;
 `endif
@@ -242,17 +238,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
 `endif
 
-`ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
-   // See NOTE: "tohost" above.
-   // "tohost" addr on which to monitor writes, for standard ISA tests.
-   // These are set by the 'set_watch_tohost' method but are otherwise read-only.
-   Reg #(Bool)      rg_watch_tohost <- mkReg (True);
-   Reg #(Fabric_Addr) rg_tohost_addr  <- mkRegU;
-   Reg #(Fabric_Data) rg_tohost_value <- mkReg (0);
-`endif
-`endif
-
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    Reg #(DTCM_State) rg_state <- mkReg (RST);
 
@@ -302,13 +287,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       f_mem_rdata.clear;
       fabric_adapter.reset;
       mmio.reset;
-
-`ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
-      rg_watch_tohost <= True;
-      rg_tohost_value <= 0;
-`endif
-`endif
 
       rg_state <= RDY;
    endrule
@@ -420,27 +398,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          Bit #(32) final_st_val = ram_st_value;
 `endif
 
-`ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
-         // ----------------
-         // "tohost" addr on which to monitor writes, for standard ISA tests.
-         // See NOTE: "tohost" above.
-         if (  (rg_watch_tohost)
-            && (req.op == CACHE_ST)
-            && (zeroExtend (req.va) == rg_tohost_addr)
-            && (ram_st_value != 0)) begin
-            rg_tohost_value <= ram_st_value;
-            if (verbosity >= 1) begin
-               let test_num = (ram_st_value >> 1);
-               $display ("%0d: %m.fa_watch_tohost", cur_cycle);
-               if (test_num == 0) $write ("    PASS");
-               else               $write ("    FAIL <test_%0d>", test_num);
-               $display ("  (<tohost>  addr %08h  data %08h)"
-                  , req.va, ram_st_value);
-            end
-         end
-`endif
-`endif
          return (
 `ifdef ISA_A
             tuple2 (
@@ -653,23 +610,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
    // ----------------------------------------------------------------
    // Misc. control and status
-
-   // ----------------
-   // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
-
-`ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr)
-      if (rg_state == RDY);
-      rg_watch_tohost <= watch_tohost;
-      rg_tohost_addr  <= tohost_addr;
-      $display ("%0d: %m.set_watch_tohost: watch %0d, addr %08h",
-                cur_cycle, watch_tohost, tohost_addr);
-   endmethod
-
-   method Fabric_Data mv_tohost_value if (rg_state == RDY);
-      return rg_tohost_value;
-   endmethod
-`endif
 
 endmodule
 

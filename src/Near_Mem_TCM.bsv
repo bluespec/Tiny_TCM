@@ -33,20 +33,6 @@
 // The sub-interface 'near_mem_slave' enables 'back-door' access of
 // TCM memory by devices and debuggers.
 
-// ----------------
-// NOTE: "tohost"
-// Special (fragile) ad hoc support for standard ISA tests during
-// simulation: watch writes to physical addr <tohost> and stop on
-// non-zero write.  This activity is done here rather than at memory
-// because, in the standard ISA tests, the <tohost> addr is within the
-// cacheable memory region, and therefore may never be written back to
-// memory.  The actual address is supplied via the 'set_watch_tohost'
-// method.  Standard ISA tests terminate by writing a non-zero value
-// to the <tohost> addr. Bit [0] is always 1. Bits [n:1] specify which
-// specific sub-test within the test failed.
-//
-// This logic is not meant to be included in the synthesizable version.
-// ----------------
 
 
 package Near_Mem_TCM;
@@ -399,16 +385,6 @@ module mkNear_Mem (Near_Mem_IFC);
          endmethod
       endinterface
    endinterface
-`endif
-
-   // ----------------
-   // For ISA tests: watch memory writes to <tohost> addr
-`ifdef WATCH_TOHOST
-   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
-      dtcm.set_watch_tohost (watch_tohost, tohost_addr);
-   endmethod
-
-   method Fabric_Data mv_tohost_value = dtcm.mv_tohost_value;
 `endif
 
 endmodule: mkNear_Mem
