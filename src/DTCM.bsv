@@ -89,7 +89,6 @@ interface DTCM_IFC;
 
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
-   method Fabric_Data mv_tohost_value;
 `endif
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;
@@ -247,9 +246,8 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // See NOTE: "tohost" above.
    // "tohost" addr on which to monitor writes, for standard ISA tests.
    // These are set by the 'set_watch_tohost' method but are otherwise read-only.
-   Reg #(Bool)      rg_watch_tohost <- mkReg (True);
+   Reg #(Bool)        rg_watch_tohost <- mkReg (True);
    Reg #(Fabric_Addr) rg_tohost_addr  <- mkRegU;
-   Reg #(Fabric_Data) rg_tohost_value <- mkReg (0);
 `endif
 `endif
 
@@ -306,7 +304,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `ifndef SYNTHESIS
 `ifdef WATCH_TOHOST
       rg_watch_tohost <= True;
-      rg_tohost_value <= 0;
 `endif
 `endif
 
@@ -420,27 +417,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          Bit #(32) final_st_val = ram_st_value;
 `endif
 
-`ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
-         // ----------------
-         // "tohost" addr on which to monitor writes, for standard ISA tests.
-         // See NOTE: "tohost" above.
-         if (  (rg_watch_tohost)
-            && (req.op == CACHE_ST)
-            && (zeroExtend (req.va) == rg_tohost_addr)
-            && (ram_st_value != 0)) begin
-            rg_tohost_value <= ram_st_value;
-            if (verbosity >= 1) begin
-               let test_num = (ram_st_value >> 1);
-               $display ("%0d: %m.fa_watch_tohost", cur_cycle);
-               if (test_num == 0) $write ("    PASS");
-               else               $write ("    FAIL <test_%0d>", test_num);
-               $display ("  (<tohost>  addr %08h  data %08h)"
-                  , req.va, ram_st_value);
-            end
-         end
-`endif
-`endif
          return (
 `ifdef ISA_A
             tuple2 (
@@ -549,11 +525,25 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // 1. Only use a certain region in the TCM constituting the "itcm"
          // 2. Do not allow use of the MMIO
 
+`ifndef SYNTHESIS
+`ifdef WATCH_TOHOST
+         // Detect if this is a tohost write
+         let write_tohost = (  (rg_watch_tohost)
+                            && (op == CACHE_ST)
+                            && (zeroExtend (addr) == rg_tohost_addr));
+`endif
+`endif
+
          // register the request for the response stage
          let nm_req = MMU_Cache_Req {
               op        : op
             , f3        : f3
+`ifdef WATCH_TOHOST
+            // redirect tohost writes to tohost gadget in SoC
+            , va        : (write_tohost ? 32'h6fff0010 : addr)
+`else
             , va        : addr
+`endif
             , st_value  : store_value
 `ifdef ISA_A
             , amo_funct7: amo_funct7
@@ -568,14 +558,14 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // waiting for all the results to come in about the address.
          // If it is a CACHE_ST or AMO store, the actual write
          // happens in the response phase or AMO phase
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         TCM_INDEX word_addr = truncate (nm_req.va >> bits_per_byte_in_tcm_word);
          dmem_cpu.put (0, word_addr, ?);
 
          // for all the checks relating to the soc-map
-         Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (addr);
+         Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (nm_req.va);
 
          // Check if f3 is legal, and if f3 and addr are compatible
-         if (! fn_is_aligned (f3 [1:0], addr)) begin
+         if (! fn_is_aligned (nm_req.f3 [1:0], nm_req.va)) begin
             // Misaligned accesses not supported
             rg_exc            <= tagged Valid (fv_exc_code_misaligned (nm_req));
             rg_rsp_from_mmio  <= False;
@@ -664,10 +654,6 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       rg_tohost_addr  <= tohost_addr;
       $display ("%0d: %m.set_watch_tohost: watch %0d, addr %08h",
                 cur_cycle, watch_tohost, tohost_addr);
-   endmethod
-
-   method Fabric_Data mv_tohost_value if (rg_state == RDY);
-      return rg_tohost_value;
    endmethod
 `endif
 

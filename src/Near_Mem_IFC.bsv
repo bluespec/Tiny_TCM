@@ -192,7 +192,6 @@ interface Near_Mem_IFC;
 
 `ifdef WATCH_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
-   method Fabric_Data mv_tohost_value;
 `endif
 
 endinterface

@@ -407,8 +407,6 @@ module mkNear_Mem (Near_Mem_IFC);
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
       dtcm.set_watch_tohost (watch_tohost, tohost_addr);
    endmethod
-
-   method Fabric_Data mv_tohost_value = dtcm.mv_tohost_value;
 `endif
 
 endmodule: mkNear_Mem
