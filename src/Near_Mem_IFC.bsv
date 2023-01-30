@@ -186,6 +186,13 @@ interface Near_Mem_IFC;
    // ----------------------------------------------------------------
    // Misc. control and status
 
+   // ----------------
+   // For ISA tests: watch memory writes to <tohost> addr
+
+`ifdef WATCH_TOHOST
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
+`endif
+
 endinterface
    
 `ifndef Near_Mem_TCM

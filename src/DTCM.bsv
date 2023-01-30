@@ -87,6 +87,9 @@ interface DTCM_IFC;
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
    interface Near_Mem_Fabric_IFC mem_master;
 
+`ifdef WATCH_TOHOST
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
+`endif
 `ifdef TCM_LOADER
    interface TCM_DMA_IFC dma;
 `endif
@@ -238,6 +241,16 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    FIFOF #(Read_Data)         f_mem_rdata <- mkFIFOF1;
 `endif
 
+`ifndef SYNTHESIS
+`ifdef WATCH_TOHOST
+   // See NOTE: "tohost" above.
+   // "tohost" addr on which to monitor writes, for standard ISA tests.
+   // These are set by the 'set_watch_tohost' method but are otherwise read-only.
+   Reg #(Bool)        rg_watch_tohost <- mkReg (True);
+   Reg #(Fabric_Addr) rg_tohost_addr  <- mkRegU;
+`endif
+`endif
+
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
    Reg #(DTCM_State) rg_state <- mkReg (RST);
 
@@ -287,6 +300,12 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       f_mem_rdata.clear;
       fabric_adapter.reset;
       mmio.reset;
+
+`ifndef SYNTHESIS
+`ifdef WATCH_TOHOST
+      rg_watch_tohost <= True;
+`endif
+`endif
 
       rg_state <= RDY;
    endrule
@@ -506,11 +525,25 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // 1. Only use a certain region in the TCM constituting the "itcm"
          // 2. Do not allow use of the MMIO
 
+`ifndef SYNTHESIS
+`ifdef WATCH_TOHOST
+         // Detect if this is a tohost write
+         let write_tohost = (  (rg_watch_tohost)
+                            && (op == CACHE_ST)
+                            && (zeroExtend (addr) == rg_tohost_addr));
+`endif
+`endif
+
          // register the request for the response stage
          let nm_req = MMU_Cache_Req {
               op        : op
             , f3        : f3
+`ifdef WATCH_TOHOST
+            // redirect tohost writes to tohost gadget in SoC
+            , va        : (write_tohost ? 32'h6fff0010 : addr)
+`else
             , va        : addr
+`endif
             , st_value  : store_value
 `ifdef ISA_A
             , amo_funct7: amo_funct7
@@ -525,14 +558,14 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // waiting for all the results to come in about the address.
          // If it is a CACHE_ST or AMO store, the actual write
          // happens in the response phase or AMO phase
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         TCM_INDEX word_addr = truncate (nm_req.va >> bits_per_byte_in_tcm_word);
          dmem_cpu.put (0, word_addr, ?);
 
          // for all the checks relating to the soc-map
-         Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (addr);
+         Fabric_Addr fabric_addr = fv_Addr_to_Fabric_Addr (nm_req.va);
 
          // Check if f3 is legal, and if f3 and addr are compatible
-         if (! fn_is_aligned (f3 [1:0], addr)) begin
+         if (! fn_is_aligned (nm_req.f3 [1:0], nm_req.va)) begin
             // Misaligned accesses not supported
             rg_exc            <= tagged Valid (fv_exc_code_misaligned (nm_req));
             rg_rsp_from_mmio  <= False;
@@ -610,6 +643,19 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
    // ----------------------------------------------------------------
    // Misc. control and status
+
+   // ----------------
+   // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
+
+`ifdef WATCH_TOHOST
+   method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr)
+      if (rg_state == RDY);
+      rg_watch_tohost <= watch_tohost;
+      rg_tohost_addr  <= tohost_addr;
+      $display ("%0d: %m.set_watch_tohost: watch %0d, addr %08h",
+                cur_cycle, watch_tohost, tohost_addr);
+   endmethod
+`endif
 
 endmodule
 
