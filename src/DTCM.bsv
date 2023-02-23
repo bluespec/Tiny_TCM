@@ -87,7 +87,7 @@ interface DTCM_IFC;
    // For accesses outside TCM (fabric memory, and memory-mapped I/O)
    interface Near_Mem_Fabric_IFC mem_master;
 
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
 `endif
 `ifdef TCM_LOADER
@@ -242,7 +242,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
 
 `ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
    // See NOTE: "tohost" above.
    // "tohost" addr on which to monitor writes, for standard ISA tests.
    // These are set by the 'set_watch_tohost' method but are otherwise read-only.
@@ -302,7 +302,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       mmio.reset;
 
 `ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
       rg_watch_tohost <= True;
 `endif
 `endif
@@ -526,7 +526,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // 2. Do not allow use of the MMIO
 
 `ifndef SYNTHESIS
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
          // Detect if this is a tohost write
          let write_tohost = (  (rg_watch_tohost)
                             && (op == CACHE_ST)
@@ -538,7 +538,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          let nm_req = MMU_Cache_Req {
               op        : op
             , f3        : f3
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
             // redirect tohost writes to tohost gadget in SoC
             , va        : (write_tohost ? 32'h6fff0010 : addr)
 `else
@@ -647,7 +647,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    // ----------------
    // For ISA tests: watch memory writes to <tohost> addr (see NOTE: "tohost" above)
 
-`ifdef WATCH_TOHOST
+`ifdef MEM_TOHOST
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr)
       if (rg_state == RDY);
       rg_watch_tohost <= watch_tohost;
