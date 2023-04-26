@@ -90,7 +90,9 @@ import DM_Common        :: *;    // for fn_sbaccess_to_f3
 import DM_CPU_Req_Rsp   :: *;    // for SB_Sys_Req
 
 `ifdef ISA_X
+`ifdef X_MEM
 import XTypes           :: *;    // for x-server related stuff
+`endif
 `endif
 
 import Core_Map         :: *;
@@ -145,7 +147,9 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
 
 `ifdef ISA_X
+`ifdef X_MEM
    FIFOF #(Bool) f_x_write <- mkFIFOF1;
+`endif
 `endif
 
 `ifdef TCM_LOADER
@@ -341,16 +345,16 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
 
 `ifdef ISA_X
+`ifdef X_MEM
    // ----------------
    // Back-door from DM/System into Near_Mem
    interface Server x_server;
       interface Put request;
          method Action put (X_M_Req req);
-            // size should not exceed DTCM width in this
-            // implementation
+            // size fixed to full word read
             dtcm.dmem.req (
                  (req.write ? CACHE_ST : CACHE_LD)
-               , fn_xsize_to_f3 (req.size)
+               , 3'b010    // always 32-bit
                , truncate (req.address)
                , truncate (req.wdata)
 `ifdef ISA_A
@@ -385,6 +389,7 @@ module mkNear_Mem (Near_Mem_IFC);
          endmethod
       endinterface
    endinterface
+`endif
 `endif
 
    // ----------------

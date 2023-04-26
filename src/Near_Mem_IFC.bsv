@@ -64,7 +64,9 @@ import GPIO_Adapter     :: *;
 import DM_CPU_Req_Rsp   :: *;   // for SB_Sys_Req
 
 `ifdef ISA_X
+`ifdef X_MEM
 import XTypes           :: *;
+`endif
 `endif
 
 
@@ -180,7 +182,9 @@ interface Near_Mem_IFC;
 `endif
 
 `ifdef ISA_X
+`ifdef X_MEM
    interface Server #(X_M_Req, X_M_Rsp) x_server;
+`endif
 `endif
 
    // ----------------------------------------------------------------
