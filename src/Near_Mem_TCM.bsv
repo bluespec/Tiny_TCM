@@ -93,6 +93,12 @@ import Core_Map         :: *;
 import ITCM             :: *;
 import DTCM             :: *;
 
+`ifdef ISA_X
+`ifdef X_MEM
+import CXI              :: *;
+`endif
+`endif
+
 // ================================================================
 // BRAM config constants
 
