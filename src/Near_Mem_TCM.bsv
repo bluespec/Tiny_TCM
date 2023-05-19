@@ -89,12 +89,6 @@ import APB_Adapter      :: *;
 import DM_Common        :: *;    // for fn_sbaccess_to_f3
 import DM_CPU_Req_Rsp   :: *;    // for SB_Sys_Req
 
-`ifdef ISA_X
-`ifdef X_MEM
-import XTypes           :: *;    // for x-server related stuff
-`endif
-`endif
-
 import Core_Map         :: *;
 import ITCM             :: *;
 import DTCM             :: *;

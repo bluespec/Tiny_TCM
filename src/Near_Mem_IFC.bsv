@@ -63,13 +63,6 @@ import GPIO_Adapter     :: *;
 
 import DM_CPU_Req_Rsp   :: *;   // for SB_Sys_Req
 
-`ifdef ISA_X
-`ifdef X_MEM
-import XTypes           :: *;
-`endif
-`endif
-
-
 // ================================================================
 // Near-Mem parameters (statically defined)
 
