@@ -95,7 +95,7 @@ endinterface
 
 `ifdef TCM_DP_SINGLE_MEM
 module mkDTCM #(
-        BRAM_PORT_BE #(TCM_INDEX, TCM_Word, Bytes_per_TCM_Word) dmem_cpu
+        BRAM_PORT_BE #(DTCM_INDEX, TCM_Word, Bytes_per_TCM_Word) dmem_cpu
       , Bit #(2) verbosity) (DTCM_IFC);
 `else
 (* synthesize *)
@@ -131,22 +131,22 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM 
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_DBRAM
                                                  , config_output_register_BRAM);
 `else
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
    BRAM_DUAL_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM 
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM
                                                  , config_output_register_BRAM);
 `else
    // The TCM RAM - single-ported - no GDB, no loader
    BRAM_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_BRAM
                                                  , config_output_register_BRAM);
@@ -158,9 +158,9 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM
                                                      , config_output_register_BRAM
                                                      , dtcmname
                                                      , load_file_is_binary_BRAM);
@@ -168,16 +168,16 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
    BRAM_DUAL_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM
                                                      , config_output_register_BRAM
                                                      , dtcmname
                                                      , load_file_is_binary_BRAM);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
    BRAM_PORT_BE #(
-        TCM_INDEX
+        DTCM_INDEX
       , TCM_Word
       , Bytes_per_TCM_Word) mem <- mkBRAMCore1BELoad ( n_words_BRAM
                                                      , config_output_register_BRAM
@@ -189,12 +189,12 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
-   let dmem_cpu = mem.a; 
+   let dmem_cpu = mem.a;
    let dmem_dbg = mem.b;
 `else
 `ifdef TCM_LOADER
    // GDB not defined, Loader is defined
-   let dmem_cpu = mem.a; 
+   let dmem_cpu = mem.a;
    let dmem_dbg = mem.b;
 `else
    // GDB and Loader not defined
@@ -328,7 +328,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
                rg_lrsc_valid <= False;
                lrsc_fail = tagged Valid False;// the response word should be 0
             end
-            else begin 
+            else begin
                if (verbosity >= 1) begin
                   $display ("%6d:[D]:%m.fav_write_to_ram:SC fail", cur_cycle);
                   $display ("            (va 0x%08h) (data 0x%08h)", req.va, st_value);
@@ -380,7 +380,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // arrange the store bits in the appropriate byte lanes
          match {.byte_en, .ram_st_value} = fn_byte_adjust_write (
             f3, byte_addr, st_value);
-         TCM_INDEX word_addr = truncate (byte_addr >> bits_per_byte_in_tcm_word);
+         DTCM_INDEX word_addr = truncate (byte_addr >> bits_per_byte_in_tcm_word);
 
          if (verbosity >= 1)
             $display ("      (RAM byte_en %08b) (RAM data %08h)"
@@ -408,8 +408,8 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
 `endif
                );
       endactionvalue
-   endfunction 
-   
+   endfunction
+
 // (* mutually_exclusive = "mmio_rl_read_rsp, rl_tcm_rsp" *)
 // (* mutually_exclusive = "mmio_rl_write_req, rl_tcm_rsp" *)
 //`ifdef ISA_A
@@ -525,7 +525,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
          // waiting for all the results to come in about the address.
          // If it is a CACHE_ST or AMO store, the actual write
          // happens in the response phase or AMO phase
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         DTCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
          dmem_cpu.put (0, word_addr, ?);
 
          // for all the checks relating to the soc-map
@@ -593,7 +593,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
       method Action req (Bit #(32) addr, Bit #(32) wdata) if (rg_state == RDY);
 
          // Assuming that all DMA accesses to the DTCM are full word only
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         DTCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
          // match {.byte_en, .st_val} = fn_byte_adjust_write (f3, addr, wdata);
 
          dmem_dbg.put ('hF, word_addr, wdata);

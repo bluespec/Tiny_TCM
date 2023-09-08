@@ -10,7 +10,7 @@
 // presents a new request.
 //
 // ----------------
-  
+
 package ITCM;
 
 // ================================================================
@@ -94,14 +94,14 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 // Microsemi devices do not have BRAMs that can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
-   BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2 (  n_words_BRAM 
+   BRAM_DUAL_PORT #(ITCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2 (  n_words_IBRAM
                                                    , config_output_register_BRAM);
 `else
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
-   BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2 (  n_words_BRAM 
+   BRAM_DUAL_PORT #(ITCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2 (  n_words_IBRAM
                                                    , config_output_register_BRAM);
 `else
    // The TCM RAM - single-ported - no GDB, no loader
@@ -116,7 +116,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
+                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM
                                                        , config_output_register_BRAM
                                                        , itcmname
                                                        , load_file_is_binary_BRAM);
@@ -124,7 +124,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
    BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM 
+                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM
                                                        , config_output_register_BRAM
                                                        , itcmname
                                                        , load_file_is_binary_BRAM);
@@ -170,12 +170,12 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `else
 `ifdef INCLUDE_GDB_CONTROL
    // GDB defined
-   let irom = mem.a; 
+   let irom = mem.a;
    let iram = mem.b;
 `else
 `ifdef TCM_LOADER
    // GDB not defined, Loader is defined
-   let irom = mem.a; 
+   let irom = mem.a;
    let iram = mem.b;
 `else
    // GDB and Loader not defined
@@ -225,7 +225,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
       // A write request. Complete the read-modify-write
       // arrange the store bits in the appropriate byte lanes
       let ram_st_value = fn_byte_adjust_rmw (rg_dbg_f3, rg_dbg_addr, rg_dbg_wdata, iram.read);
-      TCM_INDEX word_addr = truncate (rg_dbg_addr >> bits_per_byte_in_tcm_word);
+      ITCM_INDEX word_addr = truncate (rg_dbg_addr >> bits_per_byte_in_tcm_word);
 `ifdef TCM_DP_SINGLE_MEM
       iram.put ('hF, word_addr, ram_st_value);
 `else
@@ -267,8 +267,8 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          // We still don't know if the address is good and is meant
          // for the TCM. Since it is a read, there is no side-
          // effect and can be safely initiated without waiting for
-         // all the results to come in on the address. 
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         // all the results to come in on the address.
+         ITCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
 `ifdef TCM_DP_SINGLE_MEM
          irom.put (0, word_addr, ?);
 `else
@@ -342,7 +342,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `endif
 
          // read the RAM
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         ITCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
 `ifdef TCM_DP_SINGLE_MEM
          iram.put (0, word_addr, ?);
 `else
@@ -353,7 +353,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          let is_aligned  = fn_is_aligned (f3 [1:0], addr);
          rg_dbg_rsp_err <= !is_aligned;
 
-         // Read responses are available depending on RAM latency, 
+         // Read responses are available depending on RAM latency,
          // write responses take a cycle more
          rg_dbg_rsp_valid <= True;
          rg_read_not_write <= read_not_write;
@@ -368,7 +368,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
                   , addr, wdata, f3, fshow (read_not_write), ")");
             end
 
-            if (!is_aligned) 
+            if (!is_aligned)
                $display ("%06d:[E]:%m.backdoor.req: ADDR_MISALIGNED", cur_cycle);
          end
       endmethod
@@ -401,7 +401,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
    interface TCM_DMA_IFC dma;
       method Action req (Bit #(32) addr, Bit #(32) wdata) if (rg_state == RDY);
          // Assuming that all DMA accesses to the ITCM are full word only
-         TCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
+         ITCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
          iram.put (True, word_addr, wdata);
 
          if (verbosity > 1) begin
