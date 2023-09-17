@@ -66,6 +66,7 @@ import DM_CPU_Req_Rsp   :: *;   // for SB_Sys_Req
 
 `ifdef ISA_X
 import XTypes           :: *;
+import CXI              :: *;
 `endif
 
 
@@ -81,7 +82,7 @@ typedef Wd_Data   Wd_Data_Dma;
 typedef Wd_User   Wd_User_Dma;
 
 // ================================================================
-// Fabric parameters for memory channel into the near-mem. 
+// Fabric parameters for memory channel into the near-mem.
 
 typedef Wd_Id    Wd_Id_Mem;
 typedef Wd_Addr  Wd_Addr_Mem;
@@ -172,7 +173,7 @@ interface Near_Mem_IFC;
 `ifdef INCLUDE_GDB_CONTROL
    // ----------------------------------------------------------------
    // AXI4 DMA target interface (for backdoor/debug access of TCMs)
- 
+
    interface Server #(SB_Sys_Req, SB_Sys_Rsp) dbg_server;
 `endif
 
@@ -181,7 +182,7 @@ interface Near_Mem_IFC;
 `endif
 
 `ifdef ISA_X
-   interface Server #(X_M_Req, X_M_Rsp) x_server;
+   interface Server #(CXX_M_Req, CXX_M_Rsp) x_server;
 `endif
 
    // ----------------------------------------------------------------
@@ -196,7 +197,7 @@ interface Near_Mem_IFC;
 `endif
 
 endinterface
-   
+
 `ifndef Near_Mem_TCM
 // ================================================================
 // Cache flush specs
@@ -241,7 +242,7 @@ endinterface;
 //  - a load-word (loaded from cache/mem)
 // result:
 //  - word with correct byte(s) shifted into LSBs and properly extended
-// 
+//
 // Tiny TCM: Changed to handle 32-bit raw words only to reduce mux sizes
 
 function Bit #(32) fn_extract_and_extend_bytes (Bit #(3) f3, WordXL byte_addr, Bit #(32) mem_word);

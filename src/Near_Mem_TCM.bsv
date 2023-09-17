@@ -91,6 +91,7 @@ import DM_CPU_Req_Rsp   :: *;    // for SB_Sys_Req
 
 `ifdef ISA_X
 import XTypes           :: *;    // for x-server related stuff
+import CXI              :: *;    // for x-server related stuff
 `endif
 
 import Core_Map         :: *;
@@ -124,6 +125,23 @@ function Server #(Token, Token) fv_dummy_server_stub;
 endfunction
 
 // ================================================================
+
+// The size of the request from the accelerator core. In the
+// current version any size wider than the bit width of the nearmem
+// is not supported. Later versions may support bursting from nm
+typedef enum {
+   BITS_8, BITS_16, BITS_32, BITS_64, BITS_128
+} X_Size deriving (Bits, Eq, FShow);
+
+// Helper function to represent X_Size as Bit #(3) funct3 field.
+// CAUTION: depends on implicit behaviour of pack for X_Size enum
+// type. If the order of X_Size enum tags change, this
+// function has to be updated.
+function Bit#(3) fn_xsize_to_f3 (X_Size s);
+   return (pack (s));
+endfunction
+
+// ================================================================
 // Near_Mem_TCM module
 
 (* synthesize *)
@@ -137,7 +155,7 @@ module mkNear_Mem (Near_Mem_IFC);
 
    FIFOF #(Token) f_reset_reqs <- mkFIFOF1;
    FIFOF #(Token) f_reset_rsps <- mkFIFOF1;
-   
+
    // don't need this read-vs-write record any more as we got rid of final_st_val
 `ifdef INCLUDE_GDB_CONTROL
    FIFOF #(Bool) f_sb_read_not_write <- mkFIFOF1;
@@ -157,7 +175,7 @@ module mkNear_Mem (Near_Mem_IFC);
    BRAM_DUAL_PORT_BE #(
         TCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM 
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM
                                                      , config_output_register_BRAM
                                                      , "/tmp/tcm.mem"
                                                      , load_file_is_binary_BRAM);
@@ -345,12 +363,12 @@ module mkNear_Mem (Near_Mem_IFC);
    // Back-door from DM/System into Near_Mem
    interface Server x_server;
       interface Put request;
-         method Action put (X_M_Req req);
+         method Action put (CXX_M_Req req);
             // size should not exceed DTCM width in this
             // implementation
             dtcm.dmem.req (
                  (req.write ? CACHE_ST : CACHE_LD)
-               , fn_xsize_to_f3 (req.size)
+               , 2 // fn_xsize_to_f3 (req.size) -- 4-byte word
                , truncate (req.address)
                , truncate (req.wdata)
 `ifdef ISA_A
@@ -364,14 +382,14 @@ module mkNear_Mem (Near_Mem_IFC);
       endinterface
 
       interface Get response;
-         method ActionValue #(X_M_Rsp) get;
+         method ActionValue #(CXX_M_Rsp) get;
             // Is it a read or a write?
             let write <- pop (f_x_write);
             let rsp_dmem <- dtcm.dmem.word32.get ();
             let err_dmem <- dtcm.dmem.exc.get ();
 
             // The response packet to the accelerator
-            let rsp = X_M_Rsp {
+            let rsp = CXX_M_Rsp {
 `ifdef RV32
                  rdata  : rsp_dmem
 `else
@@ -396,7 +414,7 @@ endmodule: mkNear_Mem
 // This wrapped version is to easily interface the Near-Mem to
 // other CPUs that may not have our near-mems but speak a
 // standard protocol like AXI4.
-// 
+//
 // The wrapper uses the ARPROT value to differentiate between
 // imem and dmem loads. All stores are to dmem only.
 //

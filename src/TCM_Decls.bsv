@@ -12,42 +12,72 @@ import Fabric_Defs   :: *; // Only for type Fabric_Addr
 typedef 32 TCM_XLEN;          // TCM Width
 
 // TCM Sizing
-`ifdef TCM_4K
-typedef 4 KB_PER_TCM;
-`elsif TCM_8K
-typedef 8 KB_PER_TCM;
-`elsif TCM_16K
-typedef 16 KB_PER_TCM;
-`elsif TCM_32K
-typedef 32 KB_PER_TCM;
-`elsif TCM_64K
-typedef 64 KB_PER_TCM;
-`elsif TCM_128K
-typedef 128 KB_PER_TCM;
-`elsif TCM_256K
-typedef 256 KB_PER_TCM;
-`elsif TCM_512K
-typedef 512 KB_PER_TCM;
-`elsif TCM_1024K
-typedef 1024 KB_PER_TCM;
-`elsif TCM_2048K
-typedef 2048 KB_PER_TCM;
-`elsif TCM_4096K
-typedef 4096 KB_PER_TCM;
-`elsif TCM_8192K
-typedef 8192 KB_PER_TCM;
-`elsif TCM_16384K
-typedef 16384 KB_PER_TCM;
+`ifdef ITCM_4K
+typedef 4 KB_PER_ITCM;
+`elsif ITCM_8K
+typedef 8 KB_PER_ITCM;
+`elsif ITCM_16K
+typedef 16 KB_PER_ITCM;
+`elsif ITCM_32K
+typedef 32 KB_PER_ITCM;
+`elsif ITCM_64K
+typedef 64 KB_PER_ITCM;
+`elsif ITCM_128K
+typedef 128 KB_PER_ITCM;
+`elsif ITCM_256K
+typedef 256 KB_PER_ITCM;
+`elsif ITCM_512K
+typedef 512 KB_PER_ITCM;
+`elsif ITCM_1024K
+typedef 1024 KB_PER_ITCM;
+`elsif ITCM_2048K
+typedef 2048 KB_PER_ITCM;
+`elsif ITCM_4096K
+typedef 4096 KB_PER_ITCM;
+`elsif ITCM_8192K
+typedef 8192 KB_PER_ITCM;
+`elsif ITCM_16384K
+typedef 16384 KB_PER_ITCM;
 `else
-typedef 4 KB_PER_TCM;   // Place holder default value
+typedef 4 KB_PER_ITCM;   // Place holder default value
+`endif
+
+`ifdef DTCM_4K
+typedef 4 KB_PER_DTCM;
+`elsif DTCM_8K
+typedef 8 KB_PER_DTCM;
+`elsif DTCM_16K
+typedef 16 KB_PER_DTCM;
+`elsif DTCM_32K
+typedef 32 KB_PER_DTCM;
+`elsif DTCM_64K
+typedef 64 KB_PER_DTCM;
+`elsif DTCM_128K
+typedef 128 KB_PER_DTCM;
+`elsif DTCM_256K
+typedef 256 KB_PER_DTCM;
+`elsif DTCM_512K
+typedef 512 KB_PER_DTCM;
+`elsif DTCM_1024K
+typedef 1024 KB_PER_DTCM;
+`elsif DTCM_2048K
+typedef 2048 KB_PER_DTCM;
+`elsif DTCM_4096K
+typedef 4096 KB_PER_DTCM;
+`elsif DTCM_8192K
+typedef 8192 KB_PER_DTCM;
+`elsif DTCM_16384K
+typedef 16384 KB_PER_DTCM;
+`else
+typedef 4 KB_PER_DTCM;   // Place holder default value
 `endif
 // --- USER CONFIGURABLE
 //
 
 // Naming of TCM hex file(s)
 `ifdef HEXFILEPREFIX
-String itcmname = `HEXFILEPREFIX + "itcm.hex";
-String dtcmname = `HEXFILEPREFIX + "dtcm.hex";
+String itcmname = `HEXFILEPREFIX + "itcm.mem";
+String dtcmname = `HEXFILEPREFIX + "dtcm.mem";
 `else
 String itcmname = "/tmp/itcm.mem";
 String dtcmname = "/tmp/dtcm.mem";
@@ -67,18 +97,23 @@ function  Byte_in_TCM_Word fn_addr_to_byte_in_tcm_word (Addr a);
    return a [addr_hi_byte_in_tcm_word : addr_lo_byte_in_tcm_word ];
 endfunction
 
-Integer kb_per_tcm =   valueOf (KB_PER_TCM);   // TCM Sizing
-Integer bytes_per_TCM = kb_per_tcm * 'h400;
-
+Integer kb_per_itcm =   valueOf (KB_PER_ITCM);   // TCM Sizing
+Integer bytes_per_ITCM = kb_per_itcm * 'h400;
 // LSBs to address a byte in the TCMs
-typedef TAdd# (TLog# (KB_PER_TCM), TLog #(1024)) TCM_Addr_LSB;
-Integer tcm_addr_lsb = valueOf (TCM_Addr_LSB);
-
+typedef TAdd# (TLog# (KB_PER_ITCM), TLog #(1024)) ITCM_Addr_LSB;
+Integer itcm_addr_lsb = valueOf (ITCM_Addr_LSB);
 // Indices into the TCM
-typedef Bit #(TAdd #(TLog #(KB_PER_TCM), 8)) TCM_INDEX;//(KB*1024)/ bytes_per_tcm_word
-
+typedef Bit #(TAdd #(TLog #(KB_PER_ITCM), 8)) ITCM_INDEX;//(KB*1024)/ bytes_per_itcm_word
 // size of the BRAM in TCM_Word(s). Only handles powers of two.
-Integer n_words_BRAM = (bytes_per_TCM / bytes_per_tcm_word);
+Integer n_words_IBRAM = (bytes_per_ITCM / bytes_per_tcm_word);
 
+Integer kb_per_dtcm =   valueOf (KB_PER_DTCM);   // TCM Sizing
+Integer bytes_per_DTCM = kb_per_dtcm * 'h400;
+// LSBs to address a byte in the TCMs
+typedef TAdd# (TLog# (KB_PER_DTCM), TLog #(1024)) DTCM_Addr_LSB;
+Integer dtcm_addr_lsb = valueOf (DTCM_Addr_LSB);
+// Indices into the TCM
+typedef Bit #(TAdd #(TLog #(KB_PER_DTCM), 8)) DTCM_INDEX;//(KB*1024)/ bytes_per_dtcm_word
+// size of the BRAM in TCM_Word(s). Only handles powers of two.
+Integer n_words_DBRAM = (bytes_per_DTCM / bytes_per_tcm_word);
 endpackage
-
