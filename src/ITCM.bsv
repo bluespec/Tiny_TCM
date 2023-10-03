@@ -115,23 +115,23 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 // Xilinx device BRAMs can be loaded with a file
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
-   BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM
+   BRAM_DUAL_PORT #(ITCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_IBRAM
                                                        , config_output_register_BRAM
                                                        , itcmname
                                                        , load_file_is_binary_BRAM);
 `else
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
-   BRAM_DUAL_PORT #(TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_BRAM
+   BRAM_DUAL_PORT #(ITCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_IBRAM
                                                        , config_output_register_BRAM
                                                        , itcmname
                                                        , load_file_is_binary_BRAM);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
-   BRAM_PORT #(     TCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore1Load (  n_words_BRAM
+   BRAM_PORT #(     ITCM_INDEX
+                  , TCM_Word) mem  <- mkBRAMCore1Load (  n_words_IBRAM
                                                        , config_output_register_BRAM
                                                        , itcmname
                                                        , load_file_is_binary_BRAM);

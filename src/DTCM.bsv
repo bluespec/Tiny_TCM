@@ -144,14 +144,14 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_DUAL_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_BRAM
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BE ( n_words_DBRAM
                                                  , config_output_register_BRAM);
 `else
    // The TCM RAM - single-ported - no GDB, no loader
    BRAM_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_BRAM
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_DBRAM
                                                  , config_output_register_BRAM);
 `endif   // TCM_LOADER
 `endif   // GDB_CONTROL
@@ -163,7 +163,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_DUAL_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_DBRAM
                                                      , config_output_register_BRAM
                                                      , dtcmname
                                                      , load_file_is_binary_BRAM);
@@ -173,7 +173,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_DUAL_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_BRAM
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_DBRAM
                                                      , config_output_register_BRAM
                                                      , dtcmname
                                                      , load_file_is_binary_BRAM);
@@ -182,7 +182,7 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BELoad ( n_words_BRAM
+      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BELoad ( n_words_DBRAM
                                                      , config_output_register_BRAM
                                                      , dtcmname
                                                      , load_file_is_binary_BRAM);
