@@ -142,11 +142,11 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 
    Reg #(ITCM_State) rg_state <- mkReg (RST);
    Reg #(Maybe #(Exc_Code)) rg_rsp_exc <- mkReg (tagged Invalid);
-   FIFOF #(Token) rg_rsp_valid <- mkFIFOF;
+   FIFOF #(Bool) rg_rsp_valid <- mkFIFOF;
 `ifdef REG_I_OUT
    // to absorb the extra cycle of latency due to registered BRAM
    // output
-   FIFOF #(Token) rg_rsp_valid_d <- mkFIFOF;
+   FIFOF #(Bool) rg_rsp_valid_d <- mkFIFOF;
 `endif
 `ifdef INCLUDE_GDB_CONTROL
    Reg #(Bool) rg_dbg_rsp_valid <- mkReg (False);
@@ -298,7 +298,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          else exc = tagged Invalid;
 
          rg_rsp_exc   <= exc;
-         rg_rsp_valid.enq (?);
+         rg_rsp_valid.enq (isValid (exc)); // True if address is bad
 
          if (verbosity > 0) begin
             $display ("%06d:[D]:%m.imem.req", cur_cycle);
@@ -308,23 +308,24 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
          end
       endmethod
 
-`ifdef REG_I_OUT
       method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr
          if ((rg_state == RDY));
+`ifdef REG_I_OUT
+	 let good = rg_rsp_valid_d.first;
          rg_rsp_valid_d.deq;
 `else
-      method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr
-         if ((rg_state == RDY));
+	 let good = rg_rsp_valid.first;
          rg_rsp_valid.deq;
 `endif
+	 let value = good ? irom.read : bad_value;
          if (verbosity > 0) begin
             $display ("%06d:[D]:%m.imem.instr", cur_cycle);
             if (verbosity > 1) begin
                $display ("           (instr 0x%08h) (exc "
-                  , irom.read, fshow (rg_rsp_exc), ")");
+                  , value, fshow (rg_rsp_exc), ")");
             end
          end
-         return (tuple2 (irom.read, rg_rsp_exc));
+         return (tuple2 (value, rg_rsp_exc));
       endmethod
    endinterface
 
@@ -402,7 +403,7 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
       method Action req (Bit #(32) addr, Bit #(32) wdata) if (rg_state == RDY);
          // Assuming that all DMA accesses to the ITCM are full word only
          ITCM_INDEX word_addr = truncate (addr >> bits_per_byte_in_tcm_word);
-         iram.put (True, word_addr, wdata);
+	 if (word_addr < memsize) iram.put (True, word_addr, wdata); // ignore if addr out of range
 
          if (verbosity > 1) begin
             $display ("%06d:[D]:%m.backdoor.req", cur_cycle);

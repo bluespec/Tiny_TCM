@@ -73,6 +73,50 @@ Bool config_output_register_BRAM = False;    // i.e., no output register
 Bool load_file_is_binary_BRAM = False;       // file to be loaded is in hex format
 
 // ================================================================
+// Wrapper for unpopulated addresses
+
+module  mk_wrapper #(Integer memsize,
+		     Bool pipelined,
+		     BRAM_PORT_BE #(Bit #(a), Bit #(XLEN), n) ifc)
+           (BRAM_PORT_BE #(Bit #(a), Bit #(XLEN), n));
+
+   Reg #(Bool) isBad1 <- mkConfigReg (True);
+   Reg #(Bool) isBad2 = (?);
+   if (pipelined) begin
+      isBad2 <- mkConfigReg (True);
+
+      rule rl_copy;
+	 isBad2 <= isBad1;
+      endrule
+   end
+   else isBad2 = isBad1;
+
+   method Action put (wr_en, adr, dta);
+      isBad1 <= (adr > fromInteger (memsize));
+      ifc.put (wr_en, adr, dta);
+   endmethod
+
+   method read();
+      let x = ifc.read();
+      return (isBad2 ? bad_value : x);
+   endmethod
+endmodule
+
+module mk_wrapper2 #(Integer memsize,
+		     Bool pipelined,
+		     BRAM_DUAL_PORT_BE #(ad, dt, n) ifc)
+	   (BRAM_DUAL_PORT_BE #(ad, dt, n))
+   provisos (Alias #(ad, Bit #(a)),
+	     Alias #(dt, Bit #(XLEN)));
+
+   BRAM_PORT_BE #(ad, dt, n) ai <- mk_wrapper (memsize, pipelined, ifc.a);
+   BRAM_PORT_BE #(ad, dt, n) bi <- mk_wrapper (memsize, pipelined, ifc.b);
+
+   interface a = ai;
+   interface b = bi;
+endmodule
+
+// ================================================================
 // Interface and local type definition
 typedef enum { RST, RDY } DTCM_State deriving (Bits, Eq, FShow);
 
@@ -148,8 +192,12 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore1BE ( n_words_DBRAM
-                                                 , config_output_register_BRAM);
+      , Bytes_per_TCM_Word) mem0 <- mkBRAMCore1BE ( n_words_DBRAM
+						  , config_output_register_BRAM);
+   BRAM_PORT_BE #(
+        DTCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mk_wrapper (n_words_DBRAM, config_output_register_BRAM, mem0);
 `endif   // TCM_LOADER
 `endif   // GDB_CONTROL
 

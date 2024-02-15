@@ -11,6 +11,25 @@ import Fabric_Defs   :: *; // Only for type Fabric_Addr
 // --- USER CONFIGURABLE
 typedef 32 TCM_XLEN;          // TCM Width
 
+Bit #(TCM_XLEN) bad_value = truncate(64'h_4B1D4B1D_4B1D4B1D);
+/*
+DTCMKB = 96
+DTCMKB = 128
+DTCMKB = 160
+DTCMKB = 192
+DTCMKB = 256
+
+ITCMKB = 64
+ITCMKB = 80
+ITCMKB = 96
+ITCMKB = 128
+ITCMKB = 144
+ITCMKB = 160
+ITCMKB = 176
+ITCMKB = 192
+ITCMKB = 256
+*/
+
 // TCM Sizing
 `ifdef ITCM_4K
 typedef 4 KB_PER_ITCM;
@@ -22,8 +41,18 @@ typedef 16 KB_PER_ITCM;
 typedef 32 KB_PER_ITCM;
 `elsif ITCM_64K
 typedef 64 KB_PER_ITCM;
+`elsif ITCM_96K
+typedef 96 KB_PER_ITCM;
 `elsif ITCM_128K
 typedef 128 KB_PER_ITCM;
+`elsif ITCM_144K
+typedef 144 KB_PER_ITCM;
+`elsif ITCM_160K
+typedef 160 KB_PER_ITCM;
+`elsif ITCM_176K
+typedef 176 KB_PER_ITCM;
+`elsif ITCM_192K
+typedef 192 KB_PER_ITCM;
 `elsif ITCM_256K
 typedef 256 KB_PER_ITCM;
 `elsif ITCM_512K
@@ -38,6 +67,8 @@ typedef 4096 KB_PER_ITCM;
 typedef 8192 KB_PER_ITCM;
 `elsif ITCM_16384K
 typedef 16384 KB_PER_ITCM;
+`elsif ITCM_128M
+typedef 131072 KB_PER_ITCM;
 `else
 typedef 4 KB_PER_ITCM;   // Place holder default value
 `endif
@@ -68,6 +99,8 @@ typedef 4096 KB_PER_DTCM;
 typedef 8192 KB_PER_DTCM;
 `elsif DTCM_16384K
 typedef 16384 KB_PER_DTCM;
+`elsif DTCM_128M
+typedef 131072 KB_PER_DTCM;
 `else
 typedef 4 KB_PER_DTCM;   // Place holder default value
 `endif
