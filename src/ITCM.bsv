@@ -52,6 +52,52 @@ Bool config_output_register_BRAM = False; // no output register
 Bool load_file_is_binary_BRAM = False;    // load file is in hex format
 
 // ================================================================
+// Wrapper for unpopulated addresses
+
+module  mk_wrapper #(Integer memsize,
+		     Bool pipelined,
+		     BRAM_PORT #(Bit #(a), Bit #(XLEN)) ifc)
+           (BRAM_PORT #(Bit #(a), Bit #(XLEN)));
+
+   Reg #(Bool) isBad1 <- mkConfigReg (True);
+   Reg #(Bool) isBad2 = (?);
+   if (pipelined) begin
+      isBad2 <- mkConfigReg (True);
+
+      rule rl_copy;
+	 isBad2 <= isBad1;
+      endrule
+   end
+   else isBad2 = isBad1;
+
+   method Action put (wr_en, adr, dta);
+      // Must accommodate memsize = entire address space:
+      Bit #(TAdd #(a,1)) a = extend (adr);
+      isBad1 <= (a > fromInteger (memsize));
+      ifc.put (wr_en, adr, dta);
+   endmethod
+
+   method read();
+      let x = ifc.read();
+      return (isBad2 ? bad_value : x);
+   endmethod
+endmodule
+
+module mk_wrapper2 #(Integer memsize,
+		     Bool pipelined,
+		     BRAM_DUAL_PORT #(ad, dt) ifc)
+	   (BRAM_DUAL_PORT #(ad, dt))
+   provisos (Alias #(ad, Bit #(a)),
+	     Alias #(dt, Bit #(XLEN)));
+
+   BRAM_PORT #(ad, dt) ai <- mk_wrapper (memsize, pipelined, ifc.a);
+   BRAM_PORT #(ad, dt) bi <- mk_wrapper (memsize, pipelined, ifc.b);
+
+   interface a = ai;
+   interface b = bi;
+endmodule
+
+// ================================================================
 // Interface and local type definition
 typedef enum { RST, RDY } ITCM_State deriving (Bits, Eq, FShow);
 
@@ -116,18 +162,24 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
 `ifdef INCLUDE_GDB_CONTROL
    // The TCM RAM - dual-ported to allow backdoor debug access
    BRAM_DUAL_PORT #(ITCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_IBRAM
-                                                       , config_output_register_BRAM
-                                                       , itcmname
-                                                       , load_file_is_binary_BRAM);
+                  , TCM_Word) mem0  <- mkBRAMCore2Load (  n_words_IBRAM
+							, config_output_register_BRAM
+							, itcmname
+							, load_file_is_binary_BRAM);
+
+   BRAM_DUAL_PORT #(ITCM_INDEX
+		    , TCM_Word) mem  <- mk_wrapper2 (  n_words_IBRAM, config_output_register_BRAM, mem0);
 `else
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
    BRAM_DUAL_PORT #(ITCM_INDEX
-                  , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_IBRAM
-                                                       , config_output_register_BRAM
-                                                       , itcmname
-                                                       , load_file_is_binary_BRAM);
+                  , TCM_Word) mem0  <- mkBRAMCore2Load (  n_words_IBRAM
+							, config_output_register_BRAM
+							, itcmname
+							, load_file_is_binary_BRAM);
+
+   BRAM_DUAL_PORT #(ITCM_INDEX
+		    , TCM_Word) mem  <- mkBRAMCore2Load (  n_words_IBRAM, config_output_register_BRAM, mem0);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
    BRAM_PORT #(     ITCM_INDEX
@@ -311,13 +363,13 @@ module mkITCM #(Bit #(2) verbosity) (ITCM_IFC);
       method ActionValue #(Tuple2 #(Instr, Maybe #(Exc_Code))) instr
          if ((rg_state == RDY));
 `ifdef REG_I_OUT
-	 let good = rg_rsp_valid_d.first;
+	 let bad = rg_rsp_valid_d.first;
          rg_rsp_valid_d.deq;
 `else
-	 let good = rg_rsp_valid.first;
+	 let bad = rg_rsp_valid.first;
          rg_rsp_valid.deq;
 `endif
-	 let value = good ? irom.read : bad_value;
+	 let value = bad ? bad_value : irom.read;
          if (verbosity > 0) begin
             $display ("%06d:[D]:%m.imem.instr", cur_cycle);
             if (verbosity > 1) begin

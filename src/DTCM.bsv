@@ -92,7 +92,9 @@ module  mk_wrapper #(Integer memsize,
    else isBad2 = isBad1;
 
    method Action put (wr_en, adr, dta);
-      isBad1 <= (adr > fromInteger (memsize));
+      // Must accommodate memsize = entire address space:
+      Bit #(TAdd #(a,1)) a = extend (adr);
+      isBad1 <= (a > fromInteger (memsize));
       ifc.put (wr_en, adr, dta);
    endmethod
 
@@ -208,20 +210,30 @@ module mkDTCM #(Bit #(2) verbosity) (DTCM_IFC);
    BRAM_DUAL_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_DBRAM
-                                                     , config_output_register_BRAM
-                                                     , dtcmname
-                                                     , load_file_is_binary_BRAM);
+      , Bytes_per_TCM_Word) mem0 <- mkBRAMCore2BELoad ( n_words_DBRAM
+						       , config_output_register_BRAM
+						       , dtcmname
+                                                       , load_file_is_binary_BRAM);
+
+   BRAM_DUAL_PORT_BE #(
+        DTCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mk_wrapper2 ( n_words_DBRAM, config_output_register_BRAM, mem0);
 `else
 `ifdef TCM_LOADER
    // The TCM RAM - dual-ported to allow backdoor loader access
    BRAM_DUAL_PORT_BE #(
         DTCM_INDEX
       , TCM_Word
-      , Bytes_per_TCM_Word) mem <- mkBRAMCore2BELoad ( n_words_DBRAM
-                                                     , config_output_register_BRAM
-                                                     , dtcmname
-                                                     , load_file_is_binary_BRAM);
+      , Bytes_per_TCM_Word) mem0 <- mkBRAMCore2BELoad ( n_words_DBRAM
+						       , config_output_register_BRAM
+						       , dtcmname
+                                                       , load_file_is_binary_BRAM);
+
+   BRAM_DUAL_PORT_BE #(
+        DTCM_INDEX
+      , TCM_Word
+      , Bytes_per_TCM_Word) mem <- mk_wrapper2 ( n_words_DBRAM, config_output_register_BRAM, mem0);
 `else
    // The TCM RAM - single-ported with file loading - no GDB, no loader
    BRAM_PORT_BE #(
