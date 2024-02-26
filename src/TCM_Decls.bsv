@@ -152,11 +152,11 @@ typedef 4 KB_PER_DTCM;   // Place holder default value
 
 // Naming of TCM hex file(s)
 `ifdef HEXFILEPREFIX
-String itcmname = `HEXFILEPREFIX + "itcm.mem";
-String dtcmname = `HEXFILEPREFIX + "dtcm.mem";
+String itcmname = `HEXFILEPREFIX + "itcm.hex";
+String dtcmname = `HEXFILEPREFIX + "dtcm.hex";
 `else
-String itcmname = "/tmp/itcm.mem";
-String dtcmname = "/tmp/dtcm.mem";
+String itcmname = "./itcm.hex";
+String dtcmname = "./dtcm.hex";
 `endif
 
 typedef Bit #(TCM_XLEN)                   TCM_Word;
