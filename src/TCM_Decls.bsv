@@ -39,8 +39,12 @@ typedef 8 KB_PER_ITCM;
 typedef 16 KB_PER_ITCM;
 `elsif ITCM_32K
 typedef 32 KB_PER_ITCM;
+`elsif ITCM_48K
+typedef 48 KB_PER_ITCM;
 `elsif ITCM_64K
 typedef 64 KB_PER_ITCM;
+`elsif ITCM_80K
+typedef 80 KB_PER_ITCM;
 `elsif ITCM_96K
 typedef 96 KB_PER_ITCM;
 `elsif ITCM_128K
@@ -113,8 +117,12 @@ typedef 8 KB_PER_DTCM;
 typedef 16 KB_PER_DTCM;
 `elsif DTCM_32K
 typedef 32 KB_PER_DTCM;
+`elsif DTCM_48K
+typedef 48 KB_PER_DTCM;
 `elsif DTCM_64K
 typedef 64 KB_PER_DTCM;
+`elsif DTCM_80K
+typedef 80 KB_PER_DTCM;
 `elsif DTCM_96K
 typedef 96 KB_PER_DTCM;
 `elsif DTCM_128K
